@@ -55,6 +55,10 @@ zone: meow-zone
 			It("Returns true if the value is in the list of configured load balancing strategies", func() {
 				Expect(IsLoadBalancingAlgorithmValid(LOAD_BALANCE_RR)).To(Equal(true))
 			})
+
+			It("Returns true for hash load balancing algorithm", func() {
+				Expect(IsLoadBalancingAlgorithmValid(LOAD_BALANCE_HB)).To(Equal(true))
+			})
 		})
 
 		Context("load balance config", func() {
@@ -73,12 +77,23 @@ balancing_algorithm: least-connection
 				Expect(cfg.LoadBalance).To(Equal(LOAD_BALANCE_LC))
 			})
 
+			It("can override the load balance strategy to hash", func() {
+				cfg, err := DefaultConfig()
+				Expect(err).ToNot(HaveOccurred())
+				var b = []byte(`
+balancing_algorithm: hash
+`)
+				cfg.Initialize(b)
+				cfg.Process()
+				Expect(cfg.LoadBalance).To(Equal(LOAD_BALANCE_HB))
+			})
+
 			It("does not allow an invalid load balance strategy", func() {
 				cfg, err := DefaultConfig()
 				Expect(err).ToNot(HaveOccurred())
 				cfgForSnippet.LoadBalance = "foo-bar"
 				cfg.Initialize(createYMLSnippet(cfgForSnippet))
-				Expect(cfg.Process()).To(MatchError("Invalid load balancing algorithm foo-bar. Allowed values are [round-robin least-connection]"))
+				Expect(cfg.Process()).To(MatchError("Invalid load balancing algorithm foo-bar. Allowed values are [round-robin least-connection hash]"))
 			})
 		})
 
@@ -1805,7 +1820,7 @@ load_balancer_healthy_threshold: 10s
 			})
 			It("setting hop_by_hop_headers_to_filter succeeds", func() {
 				err := config.Initialize(createYMLSnippet(cfgForSnippet))
-				Expect(err).NotTo(HaveOccurred())
+				Expect(err).ToNot(HaveOccurred())
 				Expect(config.Process()).To(Succeed())
 				Expect(config.HopByHopHeadersToFilter).To(Equal([]string{"X-ME", "X-Foo"}))
 			})

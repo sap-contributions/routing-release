@@ -24,6 +24,7 @@ import (
 const (
 	LOAD_BALANCE_RR           string = "round-robin"
 	LOAD_BALANCE_LC           string = "least-connection"
+	LOAD_BALANCE_HB           string = "hash"
 	AZ_PREF_NONE              string = "none"
 	AZ_PREF_LOCAL             string = "locally-optimistic"
 	SHARD_ALL                 string = "all"
@@ -38,7 +39,7 @@ const (
 )
 
 var (
-	LoadBalancingStrategies         = []string{LOAD_BALANCE_RR, LOAD_BALANCE_LC}
+	LoadBalancingStrategies         = []string{LOAD_BALANCE_RR, LOAD_BALANCE_LC, LOAD_BALANCE_HB}
 	AZPreferences                   = []string{AZ_PREF_NONE, AZ_PREF_LOCAL}
 	AllowedShardingModes            = []string{SHARD_ALL, SHARD_SEGMENTS, SHARD_SHARED_AND_SEGMENTS}
 	AllowedForwardedClientCertModes = []string{ALWAYS_FORWARD, FORWARD, SANITIZE_SET}
