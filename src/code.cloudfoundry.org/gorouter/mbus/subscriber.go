@@ -42,7 +42,7 @@ type RegistryMessage struct {
 
 type RegistryMessageOpts struct {
 	LoadBalancingAlgorithm string  `json:"loadbalancing"`
-	HashHeaderName         string  `json:"hash_header"`
+	HashHeader             string  `json:"hash_header"`
 	HashBalance            float64 `json:"hash_balance"`
 }
 
@@ -78,8 +78,8 @@ func (rm *RegistryMessage) makeEndpoint(http2Enabled bool) (*route.Endpoint, err
 		UseTLS:                  useTLS,
 		UpdatedAt:               updatedAt,
 		LoadBalancingAlgorithm:  rm.Options.LoadBalancingAlgorithm,
-		HashHeaderName:          rm.Options.HashHeaderName,
-		HashBalanceFactor:       rm.Options.HashBalance,
+		HashHeader:              rm.Options.HashHeader,
+		HashBalance:             rm.Options.HashBalance,
 	}), nil
 }
 
