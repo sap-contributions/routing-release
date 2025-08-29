@@ -946,41 +946,4 @@ var _ = Describe("Subscriber", func() {
 			}
 		})
 	})
-
-	//Describe("Registry Message with Hash Options", func() {
-	//	Context("when processing a registry message with hash options", func() {
-	//		It("creates endpoints with correct hash properties", func() {
-	//			process = ifrit.Invoke(sub)
-	//			Eventually(process.Ready()).Should(BeClosed())
-	//
-	//			msg := mbus.RegistryMessage{
-	//				Host: "192.168.1.1",
-	//				Port: 1234,
-	//				Uris: []route.Uri{"test.example.com"},
-	//				Options: mbus.RegistryMessageOpts{
-	//					LoadBalancingAlgorithm: "hash",
-	//					HashHeader:             "X-ABC",
-	//					HashBalance:            1.15,
-	//				},
-	//			}
-	//
-	//			data, err := json.Marshal(msg)
-	//			Expect(err).NotTo(HaveOccurred())
-	//
-	//			err = natsClient.Publish("router.register", data)
-	//			Expect(err).ToNot(HaveOccurred())
-	//
-	//			Eventually(func() int {
-	//				return registry.RegisterCallCount()
-	//			}).Should(Equal(1))
-	//
-	//			uri, endpoint := registry.RegisterArgsForCall(0)
-	//			Expect(uri).To(Equal(route.Uri("test.example.com")))
-	//			Expect(endpoint.HashRoutingProperties.Header).To(Equal("X-ABC"))
-	//			Expect(endpoint.HashRoutingProperties.BalanceFactor).To(Equal(1.15))
-	//			Expect(endpoint.LoadBalancingAlgorithm).To(Equal("hash"))
-	//		})
-	//	})
-	//
-	//})
 })

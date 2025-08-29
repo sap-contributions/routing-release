@@ -242,6 +242,7 @@ func NewEndpoint(opts *EndpointOpts) *Endpoint {
 		LoadBalancingAlgorithm: opts.LoadBalancingAlgorithm,
 	}
 
+	// TODO: Log debug? warning when HashHeader is set but LoadBalancingAlgorithm is not LOAD_BALANCE_HB?
 	if opts.LoadBalancingAlgorithm == config.LOAD_BALANCE_HB && opts.HashHeader != "" { // BalanceFactor is optional
 		endpoint.HashRoutingProperties = &HashRoutingProperties{
 			Header:        opts.HashHeader,
