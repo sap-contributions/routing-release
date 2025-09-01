@@ -57,7 +57,7 @@ var _ = Describe("Endpoint", func() {
 				Expect(endpoint.HashRoutingProperties.Header).To(Equal("X-Header"))
 			})
 			It("should have the correct hash balance", func() {
-				Expect(endpoint.HashRoutingProperties.BalanceFactor).To(Equal(float32(1.15)))
+				Expect(endpoint.HashRoutingProperties.BalanceFactor).To(Equal(1.15))
 			})
 			It("should have the correct load balancing algorithm", func() {
 				Expect(endpoint.LoadBalancingAlgorithm).To(Equal("hash"))

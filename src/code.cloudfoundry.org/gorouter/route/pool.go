@@ -76,7 +76,7 @@ type ProxyRoundTripper interface {
 
 type HashRoutingProperties struct {
 	Header        string
-	BalanceFactor float32
+	BalanceFactor float64
 }
 
 func (hrp *HashRoutingProperties) Equal(hrp2 *HashRoutingProperties) bool {
@@ -219,7 +219,7 @@ type EndpointOpts struct {
 	UpdatedAt               time.Time
 	LoadBalancingAlgorithm  string
 	HashHeader              string
-	HashBalance             float32
+	HashBalance             float64
 }
 
 func NewEndpoint(opts *EndpointOpts) *Endpoint {
@@ -618,7 +618,7 @@ func (e *Endpoint) MarshalJSON() ([]byte, error) {
 		ServerCertDomainSAN    string            `json:"server_cert_domain_san,omitempty"`
 		LoadBalancingAlgorithm string            `json:"load_balancing_algorithm,omitempty"`
 		HashHeader             string            `json:"hash_header,omitempty"`
-		HashBalance            float32           `json:"hash_balance,omitempty"`
+		HashBalance            float64           `json:"hash_balance,omitempty"`
 	}
 
 	jsonObj.Address = e.addr
