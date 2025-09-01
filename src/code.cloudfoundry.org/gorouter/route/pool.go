@@ -199,6 +199,7 @@ type EndpointPool struct {
 	logger                 *slog.Logger
 	updatedAt              time.Time
 	LoadBalancingAlgorithm string
+	HashRoutingProperties  *HashRoutingProperties
 }
 
 type EndpointOpts struct {
@@ -459,6 +460,9 @@ func (p *EndpointPool) Endpoints(logger *slog.Logger, initial string, mustBeStic
 	case config.LOAD_BALANCE_RR:
 		logger.Debug("endpoint-iterator-with-round-robin-lb-algo")
 		return NewRoundRobin(logger, p, initial, mustBeSticky, azPreference == config.AZ_PREF_LOCAL, az)
+	case config.LOAD_BALANCE_HB:
+		logger.Debug("endpoint-iterator-with-hash-based-lb-algo")
+		return NewHashBased(logger, p, initial, mustBeSticky, azPreference == config.AZ_PREF_LOCAL, az)
 	default:
 		logger.Error("invalid-pool-load-balancing-algorithm",
 			slog.String("poolLBAlgorithm", p.LoadBalancingAlgorithm),
@@ -583,6 +587,16 @@ func (p *EndpointPool) setPoolLoadBalancingAlgorithm(endpoint *Endpoint) {
 			p.logger.Debug("setting-pool-load-balancing-algorithm-to-that-of-an-endpoint",
 				slog.String("endpointLBAlgorithm", endpoint.LoadBalancingAlgorithm),
 				slog.String("poolLBAlgorithm", p.LoadBalancingAlgorithm))
+
+			if endpoint.LoadBalancingAlgorithm == config.LOAD_BALANCE_HB && endpoint.HashRoutingProperties != nil {
+				//TODO: can we just assign the pointer here? HashRoutingProperties should be immutable after endpoint creation.
+				p.HashRoutingProperties = endpoint.HashRoutingProperties
+				p.logger.Debug("setting-pool-hash-routing-properties-to-that-of-an-endpoint",
+					slog.String("header", endpoint.HashRoutingProperties.Header),
+					slog.Float64("balanceFactor", endpoint.HashRoutingProperties.BalanceFactor))
+			} else {
+				p.HashRoutingProperties = nil
+			}
 		} else {
 			p.logger.Error("invalid-endpoint-load-balancing-algorithm-provided-keeping-pool-lb-algo",
 				slog.String("endpointLBAlgorithm", endpoint.LoadBalancingAlgorithm),

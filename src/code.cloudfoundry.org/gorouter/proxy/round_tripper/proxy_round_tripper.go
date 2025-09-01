@@ -127,6 +127,11 @@ func (rt *roundTripper) RoundTrip(originalRequest *http.Request) (*http.Response
 	stickyEndpointID, mustBeSticky := handlers.GetStickySession(request, rt.config.StickySessionCookieNames, rt.config.StickySessionsForAuthNegotiate)
 	numberOfEndpoints := reqInfo.RoutePool.NumEndpoints()
 	iter := reqInfo.RoutePool.Endpoints(rt.logger, stickyEndpointID, mustBeSticky, rt.config.LoadBalanceAZPreference, rt.config.Zone)
+	if reqInfo.RoutePool.LoadBalancingAlgorithm == config.LOAD_BALANCE_HB {
+		headerName := reqInfo.RoutePool.HashRoutingProperties.Header
+		headerValue := request.Header.Get(headerName)
+		iter.(*route.HashBased).HeaderValue = headerValue
+	}
 
 	// The selectEndpointErr needs to be tracked separately. If we get an error
 	// while selecting an endpoint we might just have run out of routes. In
