@@ -77,15 +77,14 @@ balancing_algorithm: least-connection
 				Expect(cfg.LoadBalance).To(Equal(LOAD_BALANCE_LC))
 			})
 
-			It("can override the load balance strategy to hash", func() {
+			It("can NOT override the load balance strategy to hash (not available as global default)", func() {
 				cfg, err := DefaultConfig()
 				Expect(err).ToNot(HaveOccurred())
 				var b = []byte(`
 balancing_algorithm: hash
 `)
 				cfg.Initialize(b)
-				cfg.Process()
-				Expect(cfg.LoadBalance).To(Equal(LOAD_BALANCE_HB))
+				Expect(cfg.Process()).To(MatchError("Invalid global load balancing algorithm hash. Allowed values are [round-robin least-connection]"))
 			})
 
 			It("does not allow an invalid load balance strategy", func() {
@@ -93,7 +92,7 @@ balancing_algorithm: hash
 				Expect(err).ToNot(HaveOccurred())
 				cfgForSnippet.LoadBalance = "foo-bar"
 				cfg.Initialize(createYMLSnippet(cfgForSnippet))
-				Expect(cfg.Process()).To(MatchError("Invalid load balancing algorithm foo-bar. Allowed values are [round-robin least-connection hash]"))
+				Expect(cfg.Process()).To(MatchError("Invalid global load balancing algorithm foo-bar. Allowed values are [round-robin least-connection]"))
 			})
 		})
 
