@@ -218,8 +218,6 @@ type EndpointOpts struct {
 	UseTLS                  bool
 	UpdatedAt               time.Time
 	LoadBalancingAlgorithm  string
-	HashHeaderName          string
-	HashBalanceFactor       float64
 	HashHeader              string
 	HashBalance             float64
 }
