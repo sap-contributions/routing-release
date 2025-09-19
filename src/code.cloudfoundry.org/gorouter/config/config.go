@@ -762,11 +762,7 @@ func (c *Config) Process() error {
 	}
 
 	if !IsGlobalLoadBalancingAlgorithmValid(c.LoadBalance) {
-<<<<<<< HEAD
 		return fmt.Errorf("Invalid global load balancing algorithm %s. Allowed values are %s", c.LoadBalance, GlobalLoadBalancingStrategies)
-=======
-		return fmt.Errorf("Invalid global load balancing algorithm %s. Allowed values are %s", c.LoadBalance, GlobalLoadBalancingAlgorithms)
->>>>>>> 4421c0bf4 (feat(config): Update load balancing algorithms to prevent global configuration of hash-based routing)
 	}
 
 	validAZPref := false
