@@ -4,20 +4,22 @@ import (
 	"errors"
 	"fmt"
 	"hash/fnv"
+	"log/slog"
 	"sort"
 	"strings"
 	"sync"
 )
 
 const (
-	//	bigM uint64 = 65537
-	bigM uint64 = 10
+	// bigM uint64 = 65537
+	bigM uint64 = 293
 )
 
 // Maglev :
 type Maglev struct {
 	n           uint64 //size of VIP backends
 	m           uint64 //sie of the lookup table
+	logger      *slog.Logger
 	permutation [][]uint64
 	lookup      []int64
 	nodeList    []string
@@ -25,11 +27,8 @@ type Maglev struct {
 }
 
 // NewMaglev :
-func NewMaglev() *Maglev {
-	mag := &Maglev{m: bigM, lock: &sync.RWMutex{}, lookup: make([]int64, bigM)}
-	// if err := mag.Set(backends); err != nil {
-	//	return nil, err
-	//}
+func NewMaglev(logger *slog.Logger) *Maglev {
+	mag := &Maglev{m: bigM, lock: &sync.RWMutex{}, lookup: make([]int64, bigM), logger: logger}
 	return mag
 }
 
@@ -40,7 +39,7 @@ func (m *Maglev) Add(backend string) error {
 
 	for _, v := range m.nodeList {
 		if v == backend {
-			return nil
+			return errors.New("Exist already")
 		}
 	}
 
@@ -52,6 +51,7 @@ func (m *Maglev) Add(backend string) error {
 	m.n = uint64(len(m.nodeList))
 	m.generatePopulation()
 	m.populate()
+	m.logger.Info("backend added", slog.String("backend", backend), slog.String("lookupTable", m.PrintLookupTable()))
 	return nil
 }
 

@@ -43,6 +43,7 @@ var _ = Describe("HashBased", func() {
 			)
 			BeforeEach(func() {
 				e1 := route.NewEndpoint(&route.EndpointOpts{Host: "1.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", HashHeaderName: "tenant-id", PrivateInstanceId: "ID1"})
+				//e2 := route.NewEndpoint(&route.EndpointOpts{Host: "2.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", HashHeaderName: "tenant-id", PrivateInstanceId: "ID2"})
 				endpoints = []*route.Endpoint{e1}
 				for _, e := range endpoints {
 					pool.Put(e)

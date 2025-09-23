@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -283,7 +284,7 @@ func NewPool(opts *PoolOpts) *EndpointPool {
 		LoadBalancingAlgorithm: opts.LoadBalancingAlgorithm,
 	}
 	if pool.LoadBalancingAlgorithm == config.LOAD_BALANCE_HB {
-		pool.HashLookupTable = NewMaglev()
+		pool.HashLookupTable = NewMaglev(opts.Logger)
 	}
 	return pool
 }
@@ -384,7 +385,10 @@ func (p *EndpointPool) Put(endpoint *Endpoint) PoolPutResult {
 		p.setPoolLoadBalancingAlgorithm(e.endpoint)
 		if p.LoadBalancingAlgorithm == config.LOAD_BALANCE_HB {
 			p.logger.Info("endpoint not found..adding", slog.String("endpoint_ID", e.endpoint.PrivateInstanceId))
+			p.logger.Info("Original lookup table", slog.String("lookup_table", p.HashLookupTable.PrintLookupTable()))
 			p.HashLookupTable.Add(e.endpoint.PrivateInstanceId)
+			joined := strings.Join(p.HashLookupTable.nodeList, ",")
+			p.logger.Info("nodelist", slog.String("nodelist", joined))
 			p.logger.Info("lookup table", slog.String("lookup_table", p.HashLookupTable.PrintLookupTable()))
 
 		}
