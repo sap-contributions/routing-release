@@ -73,14 +73,15 @@ func EndpointIteratorForRequest(logger *slog.Logger, request *http.Request, stic
 	if reqInfo.RoutePool.LoadBalancingAlgorithm == config.LOAD_BALANCE_HB {
 		hashHeaderName := reqInfo.RoutePool.HashRoutingProperties.Header
 		hashHeaderValue := request.Header.Get(hashHeaderName)
-		//intialEndpointID, err := reqInfo.RoutePool.HashLookupTable.Get(hashHeaderValue)
+		//hashed := reqInfo.RoutePool.HashLookupTable.CalculateFNVHash64(hashHeaderValue)
+		intialEndpointID, err := reqInfo.RoutePool.HashLookupTable.Get(hashHeaderValue)
 		if err != nil {
 			return nil, fmt.Errorf("could not map request to an endpoint")
 		}
-		return reqInfo.RoutePool.Endpoints(logger, "", mustBeSticky, azPreference, az, hashHeaderValue), nil
+		return reqInfo.RoutePool.Endpoints(logger, intialEndpointID, mustBeSticky, azPreference, az), nil
 	}
 
-	return reqInfo.RoutePool.Endpoints(logger, stickyEndpointID, mustBeSticky, azPreference, az, ""), nil
+	return reqInfo.RoutePool.Endpoints(logger, stickyEndpointID, mustBeSticky, azPreference, az), nil
 }
 
 func GetStickySession(request *http.Request, stickySessionCookieNames config.StringSet, authNegotiateSticky bool) (string, bool) {

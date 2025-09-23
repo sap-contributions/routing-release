@@ -467,7 +467,7 @@ func (p *EndpointPool) removeEndpoint(e *endpointElem) {
 	p.Update()
 }
 
-func (p *EndpointPool) Endpoints(logger *slog.Logger, initial string, mustBeSticky bool, azPreference string, az string, hashHeaderValue string) EndpointIterator {
+func (p *EndpointPool) Endpoints(logger *slog.Logger, initial string, mustBeSticky bool, azPreference string, az string) EndpointIterator {
 	switch p.LoadBalancingAlgorithm {
 	case config.LOAD_BALANCE_LC:
 		logger.Debug("endpoint-iterator-with-least-connection-lb-algo")
@@ -477,7 +477,7 @@ func (p *EndpointPool) Endpoints(logger *slog.Logger, initial string, mustBeStic
 		return NewRoundRobin(logger, p, initial, mustBeSticky, azPreference == config.AZ_PREF_LOCAL, az)
 	case config.LOAD_BALANCE_HB:
 		logger.Info("endpoint-iterator-with-hash-based-lb-algo")
-		return NewHashBased(logger, p, initial, mustBeSticky, azPreference == config.AZ_PREF_LOCAL, az, hashHeaderValue)
+		return NewHashBased(logger, p, initial, mustBeSticky, azPreference == config.AZ_PREF_LOCAL, az)
 	default:
 		logger.Error("invalid-pool-load-balancing-algorithm",
 			slog.String("poolLBAlgorithm", p.LoadBalancingAlgorithm),

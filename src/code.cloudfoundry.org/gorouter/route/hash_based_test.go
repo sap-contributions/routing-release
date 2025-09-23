@@ -32,7 +32,7 @@ var _ = Describe("HashBased", func() {
 
 		Context("when pool is empty", func() {
 			It("does not select an endpoint", func() {
-				iter := route.NewHashBased(logger.Logger, pool, "", false, false, "meow-az", "tenant-1")
+				iter := route.NewHashBased(logger.Logger, pool, "", false, false, "meow-az")
 				Expect(iter.Next(0)).To(BeNil())
 			})
 		})
@@ -49,7 +49,7 @@ var _ = Describe("HashBased", func() {
 				}
 			})
 			It("It selects it", func() {
-				iter := route.NewHashBased(logger.Logger, pool, "", false, false, "meow-az", "")
+				iter := route.NewHashBased(logger.Logger, pool, "ID1", false, false, "meow-az")
 				Expect(iter.Next(0)).NotTo(BeNil())
 				Expect(iter.Next(0)).To(Equal(endpoints[0]))
 			})
