@@ -689,8 +689,8 @@ var _ = Describe("Subscriber", func() {
 					HashHeaderName:         "X-Header",
 					HashBalanceFactor:      0.0,
 				})
-				Expect(expectedEndpoint.HashHeaderName).To(BeNil())
-				Expect(expectedEndpoint.HashBalanceFactor).To(BeNil())
+				Expect(expectedEndpoint.HashHeaderName).To(Equal("X-Header"))
+				Expect(expectedEndpoint.HashBalanceFactor).To(Equal(0.0))
 				Expect(originalEndpoint).To(Equal(expectedEndpoint))
 			})
 
@@ -721,8 +721,8 @@ var _ = Describe("Subscriber", func() {
 					Protocol:               "http2",
 					LoadBalancingAlgorithm: expectedLBAlgo,
 				})
-				Expect(expectedEndpoint.HashHeaderName).To(BeNil())
-				Expect(expectedEndpoint.HashBalanceFactor).To(BeNil())
+				Expect(expectedEndpoint.HashHeaderName).To(BeEmpty())
+				Expect(expectedEndpoint.HashBalanceFactor).To(Equal(0.0))
 				Expect(originalEndpoint).To(Equal(expectedEndpoint))
 			})
 		})

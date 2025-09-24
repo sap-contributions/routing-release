@@ -32,7 +32,7 @@ var _ = Describe("HashBased", func() {
 
 		Context("when pool is empty", func() {
 			It("does not select an endpoint", func() {
-				iter := route.NewHashBased(logger.Logger, pool, "", false, false, "meow-az")
+				iter := route.NewHashBased(logger.Logger, pool, "", false, false, "")
 				Expect(iter.Next(0)).To(BeNil())
 			})
 		})
@@ -43,14 +43,16 @@ var _ = Describe("HashBased", func() {
 			)
 			BeforeEach(func() {
 				e1 := route.NewEndpoint(&route.EndpointOpts{Host: "1.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", HashHeaderName: "tenant-id", PrivateInstanceId: "ID1"})
-				//e2 := route.NewEndpoint(&route.EndpointOpts{Host: "2.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", HashHeaderName: "tenant-id", PrivateInstanceId: "ID2"})
-				endpoints = []*route.Endpoint{e1}
+				e2 := route.NewEndpoint(&route.EndpointOpts{Host: "2.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", HashHeaderName: "tenant-id", PrivateInstanceId: "ID2"})
+				endpoints = []*route.Endpoint{e1, e2}
 				for _, e := range endpoints {
 					pool.Put(e)
 				}
+
 			})
 			It("It selects it", func() {
-				iter := route.NewHashBased(logger.Logger, pool, "ID1", false, false, "meow-az")
+				iter := route.NewHashBased(logger.Logger, pool, "", false, false, "")
+				iter.(*route.HashBased).HeaderValue = "tenant-1"
 				Expect(iter.Next(0)).NotTo(BeNil())
 				Expect(iter.Next(0)).To(Equal(endpoints[0]))
 			})

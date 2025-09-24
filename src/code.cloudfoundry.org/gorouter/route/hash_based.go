@@ -36,13 +36,8 @@ func (h *HashBased) Next(attempt int) *Endpoint {
 	h.lock.Lock()
 	defer h.lock.Unlock()
 	// Now we can use h.HeaderValue to determine the endpoint
-	// hashValue := CalculateFNVHash64(h.HeaderValue)
-	if h.initialEndpoint != "" {
-		h.logger.Info("Initial endpoint", slog.String("ID:", h.initialEndpoint))
-	}
-	// find the next node in the ring
-	id, error := h.pool.HashLookupTable.Get("")
-	h.logger.Info("Lookup for Id", slog.String("ID:", id))
+	id, error := h.pool.HashLookupTable.Get(h.HeaderValue)
+	h.logger.Info("Lookup for hash value", slog.String("Value:", h.HeaderValue), slog.String("backend ID:", id))
 	if error != nil {
 		h.logger.Error("failed to get Next")
 	}

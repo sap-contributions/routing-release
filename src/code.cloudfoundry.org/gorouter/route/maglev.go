@@ -73,22 +73,6 @@ func (m *Maglev) Remove(backend string) error {
 	return nil
 }
 
-func (m *Maglev) Set(backends []string) error {
-	m.lock.Lock()
-	defer m.lock.Unlock()
-
-	n := uint64(len(backends))
-	if m.m < n {
-		return errors.New("Number of backends is greater than lookup table")
-	}
-	m.nodeList = make([]string, n)
-	copy(m.nodeList, backends) // Copy to avoid modifying orinal input afterwards
-	m.n = n
-	m.generatePopulation()
-	m.populate()
-	return nil
-}
-
 func (m *Maglev) Clear() {
 	m.lock.Lock()
 	defer m.lock.Unlock()
