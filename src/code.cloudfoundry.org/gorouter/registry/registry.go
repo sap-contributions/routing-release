@@ -132,6 +132,7 @@ func (r *RouteRegistry) register(uri route.Uri, endpoint *route.Endpoint) (putRe
 	pool := r.byURI.Find(routekey)
 
 	if pool == nil {
+		r.logger.Info("pool does not exist for the uri", uri.RouteKey())
 		// release read lock, insertRouteKey() will acquire a write lock.
 		r.RUnlock()
 		pool, routePoolAdded = r.insertRouteKey(routekey, uri)

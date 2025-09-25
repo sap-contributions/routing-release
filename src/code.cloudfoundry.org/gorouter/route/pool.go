@@ -384,8 +384,10 @@ func (p *EndpointPool) Put(endpoint *Endpoint) PoolPutResult {
 		p.RouteSvcUrl = e.endpoint.RouteServiceUrl
 		p.setPoolLoadBalancingAlgorithm(e.endpoint)
 		if p.LoadBalancingAlgorithm == config.LOAD_BALANCE_HB {
+			if p.HashLookupTable == nil {
+				p.HashLookupTable = NewMaglev(p.logger)
+			}
 			p.logger.Info("endpoint not found..adding", slog.String("endpoint_ID", e.endpoint.PrivateInstanceId))
-			p.logger.Info("Original lookup table", slog.String("lookup_table", p.HashLookupTable.PrintLookupTable()))
 			p.HashLookupTable.Add(e.endpoint.PrivateInstanceId)
 			joined := strings.Join(p.HashLookupTable.nodeList, ",")
 			p.logger.Info("nodelist", slog.String("nodelist", joined))
