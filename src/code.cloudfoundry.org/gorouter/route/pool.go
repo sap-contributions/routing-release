@@ -365,10 +365,6 @@ func (p *EndpointPool) Put(endpoint *Endpoint) PoolPutResult {
 		p.RouteSvcUrl = e.endpoint.RouteServiceUrl
 		p.setPoolLoadBalancingAlgorithm(e.endpoint)
 		if p.LoadBalancingAlgorithm == config.LOAD_BALANCE_HB {
-			if p.HashLookupTable == nil {
-				p.HashLookupTable = NewMaglev(p.logger)
-			}
-			p.setPoolHashRoutingProperties(endpoint)
 			p.logger.Info("endpoint not found..adding", slog.String("endpoint_ID", e.endpoint.PrivateInstanceId))
 			p.HashLookupTable.Add(e.endpoint.PrivateInstanceId)
 			joined := strings.Join(p.HashLookupTable.nodeList, ",")
@@ -397,10 +393,6 @@ func (p *EndpointPool) Put(endpoint *Endpoint) PoolPutResult {
 		p.RouteSvcUrl = e.endpoint.RouteServiceUrl
 		p.setPoolLoadBalancingAlgorithm(e.endpoint)
 		if p.LoadBalancingAlgorithm == config.LOAD_BALANCE_HB {
-			if p.HashLookupTable == nil {
-				p.HashLookupTable = NewMaglev(p.logger)
-			}
-			p.setPoolHashRoutingProperties(endpoint)
 			p.logger.Info("endpoint not found..adding", slog.String("endpoint_ID", e.endpoint.PrivateInstanceId))
 			p.HashLookupTable.Add(e.endpoint.PrivateInstanceId)
 			joined := strings.Join(p.HashLookupTable.nodeList, ",")
@@ -628,9 +620,16 @@ func (p *EndpointPool) setPoolLoadBalancingAlgorithm(endpoint *Endpoint) {
 				slog.String("poolLBAlgorithm", p.LoadBalancingAlgorithm))
 		}
 	}
+	if p.LoadBalancingAlgorithm == config.LOAD_BALANCE_HB {
+		if p.HashLookupTable == nil {
+			p.HashLookupTable = NewMaglev(p.logger)
+		}
+		p.setPoolHashRoutingProperties(endpoint)
+	}
 }
 
 func (p *EndpointPool) setPoolHashRoutingProperties(endpoint *Endpoint) {
+	p.logger.Info("Setting hash based properties", endpoint.HashHeaderName, endpoint.HashBalanceFactor)
 	p.HashRoutingProperties = &HashRoutingProperties{
 		Header:        endpoint.HashHeaderName,
 		BalanceFactor: endpoint.HashBalanceFactor,

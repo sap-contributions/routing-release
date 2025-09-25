@@ -51,11 +51,9 @@ func (h *HashBased) EndpointFailed(err error) {
 }
 
 func (h *HashBased) PreRequest(e *Endpoint) {
-	//TODO implement me
-	panic("implement me")
+	e.Stats.NumberConnections.Increment()
 }
 
 func (h *HashBased) PostRequest(e *Endpoint) {
-	//TODO implement me
-	panic("implement me")
+	e.Stats.NumberConnections.Decrement()
 }
