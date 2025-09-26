@@ -477,6 +477,12 @@ func (p *EndpointPool) removeEndpoint(e *endpointElem) {
 	delete(p.index, e.endpoint.CanonicalAddr())
 	delete(p.index, e.endpoint.PrivateInstanceId)
 	p.Update()
+
+	if p.LoadBalancingAlgorithm == config.LOAD_BALANCE_HB {
+		p.logger.Info("remove endpoint", slog.String("hash_based", "true"), slog.String("endpoint_ID", e.endpoint.PrivateInstanceId))
+		p.HashLookupTable.Remove(e.endpoint.PrivateInstanceId)
+	}
+
 }
 
 func (p *EndpointPool) Endpoints(logger *slog.Logger, initial string, mustBeSticky bool, azPreference string, az string) EndpointIterator {

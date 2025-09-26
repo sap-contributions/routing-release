@@ -216,10 +216,6 @@ func (r *RouteRegistry) unregister(uri route.Uri, endpoint *route.Endpoint) (end
 
 	endpointRemoved = pool.Remove(endpoint)
 
-	if endpointRemoved && pool.LoadBalancingAlgorithm == config.LOAD_BALANCE_HB {
-		pool.HashLookupTable.Remove(endpoint.PrivateInstanceIndex)
-	}
-
 	if !endpointRemoved {
 		return false, false
 	}
