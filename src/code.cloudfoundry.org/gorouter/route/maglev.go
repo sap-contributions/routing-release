@@ -17,57 +17,57 @@ const (
 
 // Maglev :
 type Maglev struct {
-	n           uint64 //size of VIP backends
-	m           uint64 //sie of the lookup table
-	logger      *slog.Logger
-	permutation [][]uint64
-	lookup      []int64
-	nodeList    []string
-	lock        *sync.RWMutex
+	noOfBackends    uint64 //size of VIP backends
+	lookupTableSize uint64 //sie of the lookup table
+	logger          *slog.Logger
+	permutation     [][]uint64
+	lookup          []int64
+	backendList     []string
+	lock            *sync.RWMutex
 }
 
 // NewMaglev :
 func NewMaglev(logger *slog.Logger) *Maglev {
-	mag := &Maglev{m: bigM, lock: &sync.RWMutex{}, lookup: make([]int64, bigM), logger: logger}
+	mag := &Maglev{lookupTableSize: bigM, lock: &sync.RWMutex{}, lookup: make([]int64, bigM), logger: logger}
 	return mag
 }
 
-// Add : Return nil if add success, otherwise return error
+// Add : Return nil if add success or backend has been added already, otherwise return error
 func (m *Maglev) Add(backend string) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
-	for _, v := range m.nodeList {
+	for _, v := range m.backendList {
 		if v == backend {
-			return errors.New("Exist already")
+			return nil
 		}
 	}
 
-	if m.m == m.n {
+	if m.lookupTableSize == m.noOfBackends {
 		return errors.New("Number of backends would be greater than lookup table")
 	}
 
-	m.nodeList = append(m.nodeList, backend)
-	m.n = uint64(len(m.nodeList))
+	m.backendList = append(m.backendList, backend)
+	m.noOfBackends = uint64(len(m.backendList))
 	m.generatePopulation()
 	m.populate()
 	m.logger.Info("backend added", slog.String("backend", backend), slog.String("lookupTable", m.PrintLookupTable()))
 	return nil
 }
 
-// Remove :
+// Remove : removes a backend from the Maglev hash. Returns an error if the backend was not found.
 func (m *Maglev) Remove(backend string) error {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
-	index := sort.SearchStrings(m.nodeList, backend)
-	if index == len(m.nodeList) {
+	index := sort.SearchStrings(m.backendList, backend)
+	if index == len(m.backendList) {
 		return errors.New("Not found")
 	}
 
-	m.nodeList = append(m.nodeList[:index], m.nodeList[index+1:]...)
+	m.backendList = append(m.backendList[:index], m.backendList[index+1:]...)
 
-	m.n = uint64(len(m.nodeList))
+	m.noOfBackends = uint64(len(m.backendList))
 	m.generatePopulation()
 	m.populate()
 	return nil
@@ -77,21 +77,21 @@ func (m *Maglev) Clear() {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
-	m.nodeList = nil
+	m.backendList = nil
 	m.permutation = nil
 	m.lookup = nil
 }
 
-// Get :Get node name by object string.
+// Get :Get backend by object string.
 func (m *Maglev) Get(obj string) (string, error) {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
 
-	if len(m.nodeList) == 0 {
+	if len(m.backendList) == 0 {
 		return "", errors.New("Empty")
 	}
 	key := m.hashKey(obj)
-	return m.nodeList[m.lookup[key%m.m]], nil
+	return m.backendList[m.lookup[key%m.lookupTableSize]], nil
 }
 
 func (m *Maglev) hashKey(obj string) uint64 {
@@ -100,22 +100,22 @@ func (m *Maglev) hashKey(obj string) uint64 {
 
 func (m *Maglev) generatePopulation() {
 	m.permutation = nil
-	if len(m.nodeList) == 0 {
+	if len(m.backendList) == 0 {
 		return
 	}
 
-	sort.Strings(m.nodeList)
+	sort.Strings(m.backendList)
 
-	for i := 0; i < len(m.nodeList); i++ {
-		bData := m.nodeList[i]
+	for i := 0; i < len(m.backendList); i++ {
+		bData := m.backendList[i]
 
-		offset := CalculateFNVHash64(bData) % m.m
-		skip := (CalculateFNVHash64(bData) % (m.m - 1)) + 1
+		offset := CalculateFNVHash64(bData) % m.lookupTableSize
+		skip := (CalculateFNVHash64(bData) % (m.lookupTableSize - 1)) + 1
 
-		iRow := make([]uint64, m.m)
+		iRow := make([]uint64, m.lookupTableSize)
 		var j uint64
-		for j = 0; j < m.m; j++ {
-			iRow[j] = (offset + uint64(j)*skip) % m.m
+		for j = 0; j < m.lookupTableSize; j++ {
+			iRow[j] = (offset + uint64(j)*skip) % m.lookupTableSize
 		}
 
 		m.permutation = append(m.permutation, iRow)
@@ -123,21 +123,21 @@ func (m *Maglev) generatePopulation() {
 }
 
 func (m *Maglev) populate() {
-	if len(m.nodeList) == 0 {
+	if len(m.backendList) == 0 {
 		return
 	}
 
 	var i, j uint64
-	next := make([]uint64, m.n)
-	entry := make([]int64, m.m)
-	for j = 0; j < m.m; j++ {
+	next := make([]uint64, m.noOfBackends)
+	entry := make([]int64, m.lookupTableSize)
+	for j = 0; j < m.lookupTableSize; j++ {
 		entry[j] = -1
 	}
 
 	var n uint64
 
 	for { //true
-		for i = 0; i < m.n; i++ {
+		for i = 0; i < m.noOfBackends; i++ {
 			c := m.permutation[i][next[i]]
 			for entry[c] >= 0 {
 				next[i] = next[i] + 1
@@ -148,7 +148,7 @@ func (m *Maglev) populate() {
 			next[i] = next[i] + 1
 			n++
 
-			if n == m.m {
+			if n == m.lookupTableSize {
 				m.lookup = entry
 				return
 			}

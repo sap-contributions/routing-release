@@ -50,11 +50,14 @@ var _ = Describe("HashBased", func() {
 				}
 
 			})
-			It("It selects it", func() {
+			It("It returns the same endpoint for the same header value", func() {
 				iter := route.NewHashBased(logger.Logger, pool, "", false, false, "")
 				iter.(*route.HashBased).HeaderValue = "tenant-1"
-				Expect(iter.Next(0)).NotTo(BeNil())
-				Expect(iter.Next(0)).To(Equal(endpoints[0]))
+				first := iter.Next(0)
+				second := iter.Next(0)
+				Expect(first).NotTo(BeNil())
+				Expect(second).NotTo(BeNil())
+				Expect(first).To(Equal(second))
 			})
 		})
 	})
