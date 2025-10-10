@@ -12,11 +12,9 @@ type HashBased struct {
 
 	initialEndpoint       string
 	mustBeSticky          bool
-	lastEndpoint          *Endpoint
 	locallyOptimistic     bool
 	localAvailabilityZone string
 
-	nextIdx     int
 	HeaderValue string
 }
 
