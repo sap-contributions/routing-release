@@ -215,7 +215,6 @@ func (r *RouteRegistry) unregister(uri route.Uri, endpoint *route.Endpoint) (end
 	}
 
 	endpointRemoved = pool.Remove(endpoint)
-
 	if !endpointRemoved {
 		return false, false
 	}

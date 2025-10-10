@@ -75,21 +75,6 @@ type ProxyRoundTripper interface {
 	CancelRequest(*http.Request)
 }
 
-type HashRoutingProperties struct {
-	Header        string
-	BalanceFactor float64
-}
-
-func (hrp *HashRoutingProperties) Equal(hrp2 *HashRoutingProperties) bool {
-	if hrp == nil && hrp2 == nil {
-		return true
-	}
-	if hrp == nil || hrp2 == nil {
-		return false
-	}
-	return hrp.Header == hrp2.Header && hrp.BalanceFactor == hrp2.BalanceFactor
-}
-
 type Endpoint struct {
 	ApplicationId          string
 	AvailabilityZone       string
@@ -110,7 +95,8 @@ type Endpoint struct {
 	UpdatedAt              time.Time
 	RoundTripperInit       sync.Once
 	LoadBalancingAlgorithm string
-	HashRoutingProperties  *HashRoutingProperties
+	HashHeaderName         string
+	HashBalanceFactor      float64
 }
 
 func (e *Endpoint) RoundTripper() ProxyRoundTripper {
@@ -154,7 +140,8 @@ func (e *Endpoint) Equal(e2 *Endpoint) bool {
 		e.useTls == e2.useTls &&
 		e.UpdatedAt.Equal(e2.UpdatedAt) &&
 		e.LoadBalancingAlgorithm == e2.LoadBalancingAlgorithm &&
-		e.HashRoutingProperties.Equal(e2.HashRoutingProperties) &&
+		e.HashHeaderName == e2.HashHeaderName &&
+		e.HashBalanceFactor == e2.HashBalanceFactor &&
 		maps.Equal(e.Tags, e2.Tags)
 
 }
@@ -200,7 +187,6 @@ type EndpointPool struct {
 	logger                 *slog.Logger
 	updatedAt              time.Time
 	LoadBalancingAlgorithm string
-	HashRoutingProperties  *HashRoutingProperties
 	HashLookupTable        *Maglev
 }
 
@@ -221,8 +207,8 @@ type EndpointOpts struct {
 	UseTLS                  bool
 	UpdatedAt               time.Time
 	LoadBalancingAlgorithm  string
-	HashHeader              string
-	HashBalance             float64
+	HashHeaderName          string
+	HashBalanceFactor       float64
 }
 
 func NewEndpoint(opts *EndpointOpts) *Endpoint {
@@ -245,12 +231,9 @@ func NewEndpoint(opts *EndpointOpts) *Endpoint {
 		LoadBalancingAlgorithm: opts.LoadBalancingAlgorithm,
 	}
 
-	// TODO: Log debug? warning when HashHeader is set but LoadBalancingAlgorithm is not LOAD_BALANCE_HB?
-	if opts.LoadBalancingAlgorithm == config.LOAD_BALANCE_HB && opts.HashHeader != "" { // BalanceFactor is optional
-		endpoint.HashRoutingProperties = &HashRoutingProperties{
-			Header:        opts.HashHeader,
-			BalanceFactor: opts.HashBalance,
-		}
+	if opts.LoadBalancingAlgorithm == config.LOAD_BALANCE_HB && opts.HashHeaderName != "" { // BalanceFactor is optional
+		endpoint.HashHeaderName = opts.HashHeaderName
+		endpoint.HashBalanceFactor = opts.HashBalanceFactor
 	}
 
 	return endpoint
@@ -267,8 +250,8 @@ type PoolOpts struct {
 	MaxConnsPerBackend     int64
 	Logger                 *slog.Logger
 	LoadBalancingAlgorithm string
-	HashHeader             string
-	HashBalanceFactor      float64
+	//HashHeader             string
+	//HashBalanceFactor      float64
 }
 
 func NewPool(opts *PoolOpts) *EndpointPool {
@@ -287,10 +270,6 @@ func NewPool(opts *PoolOpts) *EndpointPool {
 	}
 	if pool.LoadBalancingAlgorithm == config.LOAD_BALANCE_HB {
 		pool.HashLookupTable = NewMaglev(opts.Logger)
-		pool.HashRoutingProperties = &HashRoutingProperties{
-			Header:        opts.HashHeader,
-			BalanceFactor: opts.HashBalanceFactor,
-		}
 	}
 	return pool
 }
@@ -630,15 +609,6 @@ func (p *EndpointPool) setPoolLoadBalancingAlgorithm(endpoint *Endpoint) {
 		if p.HashLookupTable == nil {
 			p.HashLookupTable = NewMaglev(p.logger)
 		}
-		p.setPoolHashRoutingProperties(endpoint)
-	}
-}
-
-func (p *EndpointPool) setPoolHashRoutingProperties(endpoint *Endpoint) {
-	p.logger.Info("Setting hash based properties", endpoint.HashHeaderName, endpoint.HashBalanceFactor)
-	p.HashRoutingProperties = &HashRoutingProperties{
-		Header:        endpoint.HashHeaderName,
-		BalanceFactor: endpoint.HashBalanceFactor,
 	}
 }
 
@@ -683,11 +653,8 @@ func (e *Endpoint) MarshalJSON() ([]byte, error) {
 	jsonObj.PrivateInstanceId = e.PrivateInstanceId
 	jsonObj.ServerCertDomainSAN = e.ServerCertDomainSAN
 	jsonObj.LoadBalancingAlgorithm = e.LoadBalancingAlgorithm
-
-	if e.HashRoutingProperties != nil {
-		jsonObj.HashHeader = e.HashRoutingProperties.Header
-		jsonObj.HashBalance = e.HashRoutingProperties.BalanceFactor
-	}
+	jsonObj.HashHeader = e.HashHeaderName
+	jsonObj.HashBalance = e.HashBalanceFactor
 
 	return json.Marshal(jsonObj)
 }
