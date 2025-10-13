@@ -128,7 +128,7 @@ func (rt *roundTripper) RoundTrip(originalRequest *http.Request) (*http.Response
 	numberOfEndpoints := reqInfo.RoutePool.NumEndpoints()
 	iter := reqInfo.RoutePool.Endpoints(rt.logger, stickyEndpointID, mustBeSticky, rt.config.LoadBalanceAZPreference, rt.config.Zone)
 	if reqInfo.RoutePool.LoadBalancingAlgorithm == config.LOAD_BALANCE_HB {
-		headerName := reqInfo.RouteEndpoint.HashHeaderName
+		headerName := reqInfo.RoutePool.HashRoutingProperties.Header
 		headerValue := request.Header.Get(headerName)
 		iter.(*route.HashBased).HeaderValue = headerValue
 	}
