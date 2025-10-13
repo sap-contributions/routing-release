@@ -33,6 +33,12 @@ func NewHashBased(logger *slog.Logger, p *EndpointPool, initial string, mustBeSt
 func (h *HashBased) Next(attempt int) *Endpoint {
 	h.lock.Lock()
 	defer h.lock.Unlock()
+
+	if h.pool.HashLookupTable == nil {
+		h.logger.Error("Hash-based lookup table is empty")
+		return nil
+	}
+
 	// Now we can use h.HeaderValue to determine the endpoint
 	id, error := h.pool.HashLookupTable.Get(h.HeaderValue)
 	h.logger.Info("Lookup for hash value", slog.String("Value:", h.HeaderValue), slog.String("backend ID:", id))
@@ -40,7 +46,12 @@ func (h *HashBased) Next(attempt int) *Endpoint {
 		h.logger.Error("failed to get Next")
 	}
 
-	return h.pool.findById(id).endpoint
+	e := h.pool.findById(id)
+	if e == nil {
+		h.logger.Error("not found")
+		return nil
+	}
+	return e.endpoint
 }
 
 func (h *HashBased) EndpointFailed(err error) {

@@ -18,7 +18,7 @@ const (
 // Maglev :
 type Maglev struct {
 	noOfBackends    uint64 //size of VIP backends
-	lookupTableSize uint64 //sie of the lookup table
+	lookupTableSize uint64 //size of the lookup table
 	logger          *slog.Logger
 	permutation     [][]uint64
 	lookup          []int64
@@ -26,25 +26,27 @@ type Maglev struct {
 	lock            *sync.RWMutex
 }
 
-// NewMaglev :
+// NewMaglev initializes an empty maglev lookup table
 func NewMaglev(logger *slog.Logger) *Maglev {
 	mag := &Maglev{lookupTableSize: bigM, lock: &sync.RWMutex{}, lookup: make([]int64, bigM), logger: logger}
 	return mag
 }
 
-// Add : Return nil if add success or backend has been added already, otherwise return error
-func (m *Maglev) Add(backend string) error {
+// Add a new backend to maglev lookup table. Do nothing if the backend has been already added
+func (m *Maglev) Add(backend string) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
 	for _, v := range m.backendList {
 		if v == backend {
-			return nil
+			m.logger.Info("backend already in the lookup table", slog.String("backend", backend), slog.String("lookupTable", m.PrintLookupTable()))
+			return
 		}
 	}
 
 	if m.lookupTableSize == m.noOfBackends {
-		return errors.New("Number of backends would be greater than lookup table")
+		m.logger.Warn("Number of backends would be greater than lookup table. Not adding a new backend to the hash lookup table")
+		return
 	}
 
 	m.backendList = append(m.backendList, backend)
@@ -52,7 +54,6 @@ func (m *Maglev) Add(backend string) error {
 	m.generatePopulation()
 	m.populate()
 	m.logger.Info("backend added", slog.String("backend", backend), slog.String("lookupTable", m.PrintLookupTable()))
-	return nil
 }
 
 // Remove : removes a backend from the Maglev hash. Returns an error if the backend was not found.
