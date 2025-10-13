@@ -75,6 +75,21 @@ type ProxyRoundTripper interface {
 	CancelRequest(*http.Request)
 }
 
+type HashRoutingProperties struct {
+	Header        string
+	BalanceFactor float64
+}
+
+func (hrp *HashRoutingProperties) Equal(hrp2 *HashRoutingProperties) bool {
+	if hrp == nil && hrp2 == nil {
+		return true
+	}
+	if hrp == nil || hrp2 == nil {
+		return false
+	}
+	return hrp.Header == hrp2.Header && hrp.BalanceFactor == hrp2.BalanceFactor
+}
+
 type Endpoint struct {
 	ApplicationId          string
 	AvailabilityZone       string
@@ -187,6 +202,7 @@ type EndpointPool struct {
 	logger                 *slog.Logger
 	updatedAt              time.Time
 	LoadBalancingAlgorithm string
+	HashRoutingProperties  *HashRoutingProperties
 	HashLookupTable        *Maglev
 }
 
@@ -250,8 +266,8 @@ type PoolOpts struct {
 	MaxConnsPerBackend     int64
 	Logger                 *slog.Logger
 	LoadBalancingAlgorithm string
-	//HashHeader             string
-	//HashBalanceFactor      float64
+	HashHeader             string
+	HashBalanceFactor      float64
 }
 
 func NewPool(opts *PoolOpts) *EndpointPool {
@@ -270,6 +286,10 @@ func NewPool(opts *PoolOpts) *EndpointPool {
 	}
 	if pool.LoadBalancingAlgorithm == config.LOAD_BALANCE_HB {
 		pool.HashLookupTable = NewMaglev(opts.Logger)
+		pool.HashRoutingProperties = &HashRoutingProperties{
+			Header:        opts.HashHeader,
+			BalanceFactor: opts.HashBalanceFactor,
+		}
 	}
 	return pool
 }
@@ -609,6 +629,15 @@ func (p *EndpointPool) setPoolLoadBalancingAlgorithm(endpoint *Endpoint) {
 		if p.HashLookupTable == nil {
 			p.HashLookupTable = NewMaglev(p.logger)
 		}
+		p.setPoolHashRoutingProperties(endpoint)
+	}
+}
+
+func (p *EndpointPool) setPoolHashRoutingProperties(endpoint *Endpoint) {
+	p.logger.Info("Setting hash based properties", endpoint.HashHeaderName, endpoint.HashBalanceFactor)
+	p.HashRoutingProperties = &HashRoutingProperties{
+		Header:        endpoint.HashHeaderName,
+		BalanceFactor: endpoint.HashBalanceFactor,
 	}
 }
 
