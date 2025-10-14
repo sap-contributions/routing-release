@@ -18,7 +18,7 @@ const (
 // Maglev :
 type Maglev struct {
 	noOfBackends    uint64 //size of VIP backends
-	lookupTableSize uint64 //size of the lookup table
+	lookupTableSize uint64
 	logger          *slog.Logger
 	permutation     [][]uint64
 	lookup          []int64
@@ -28,24 +28,24 @@ type Maglev struct {
 
 // NewMaglev initializes an empty maglev lookup table
 func NewMaglev(logger *slog.Logger) *Maglev {
-	mag := &Maglev{lookupTableSize: bigM, lock: &sync.RWMutex{}, lookup: make([]int64, bigM), logger: logger}
+	mag := &Maglev{lookupTableSize: bigM, lock: &sync.RWMutex{}, lookup: make([]int64, bigM), backendList: make([]string, 0, 10), logger: logger}
 	return mag
 }
 
-// Add a new backend to maglev lookup table. Do nothing if the backend has been already added
+// Add a new endpoint to maglev lookup table. Do nothing if the backend has been already added
 func (m *Maglev) Add(backend string) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
 	for _, v := range m.backendList {
 		if v == backend {
-			m.logger.Info("backend already in the lookup table", slog.String("backend", backend), slog.String("lookupTable", m.PrintLookupTable()))
+			m.logger.Debug("backend already exists in lookup table", slog.String("endpoint-id", backend), slog.Int("current_backends", len(m.backendList)))
 			return
 		}
 	}
 
 	if m.lookupTableSize == m.noOfBackends {
-		m.logger.Warn("Number of backends would be greater than lookup table. Not adding a new backend to the hash lookup table")
+		m.logger.Warn("Number of backends would exceed lookup table capacity")
 		return
 	}
 
@@ -53,17 +53,18 @@ func (m *Maglev) Add(backend string) {
 	m.noOfBackends = uint64(len(m.backendList))
 	m.generatePopulation()
 	m.populate()
-	m.logger.Info("backend added", slog.String("backend", backend), slog.String("lookupTable", m.PrintLookupTable()))
+	m.logger.Debug("backend added", slog.String("endpoint-id", backend), slog.String("lookupTable", m.PrintLookupTable()))
 }
 
-// Remove : removes a backend from the Maglev hash. Returns an error if the backend was not found.
-func (m *Maglev) Remove(backend string) error {
+// Remove an endpoint from the lookup table. Returns an error if the backend was not found.
+func (m *Maglev) Remove(backend string) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
 	index := sort.SearchStrings(m.backendList, backend)
 	if index == len(m.backendList) {
-		return errors.New("Not found")
+		// not found
+		return
 	}
 
 	m.backendList = append(m.backendList[:index], m.backendList[index+1:]...)
@@ -71,7 +72,6 @@ func (m *Maglev) Remove(backend string) error {
 	m.noOfBackends = uint64(len(m.backendList))
 	m.generatePopulation()
 	m.populate()
-	return nil
 }
 
 func (m *Maglev) Clear() {
@@ -83,15 +83,15 @@ func (m *Maglev) Clear() {
 	m.lookup = nil
 }
 
-// Get :Get backend by object string.
-func (m *Maglev) Get(obj string) (string, error) {
+// Get endpoint by specified request header value
+func (m *Maglev) Get(value string) (string, error) {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
 
 	if len(m.backendList) == 0 {
-		return "", errors.New("Empty")
+		return "", errors.New("does not exist")
 	}
-	key := m.hashKey(obj)
+	key := m.hashKey(value)
 	return m.backendList[m.lookup[key%m.lookupTableSize]], nil
 }
 
@@ -139,13 +139,8 @@ func (m *Maglev) populate() {
 
 	for { //true
 		for i = 0; i < m.noOfBackends; i++ {
-			c := m.permutation[i][next[i]]
-			for entry[c] >= 0 {
-				next[i] = next[i] + 1
-				c = m.permutation[i][next[i]]
-			}
-
-			entry[c] = int64(i)
+			candidate := m.findNextAvailableSlot(i, next, entry)
+			entry[candidate] = int64(i)
 			next[i] = next[i] + 1
 			n++
 
@@ -154,9 +149,16 @@ func (m *Maglev) populate() {
 				return
 			}
 		}
-
 	}
+}
 
+func (m *Maglev) findNextAvailableSlot(i uint64, next []uint64, entry []int64) uint64 {
+	candidate := m.permutation[i][next[i]]
+	for entry[candidate] >= 0 {
+		next[i]++
+		candidate = m.permutation[i][next[i]]
+	}
+	return candidate
 }
 
 func (m *Maglev) PrintLookupTable() string {
@@ -167,9 +169,10 @@ func (m *Maglev) PrintLookupTable() string {
 	return "[" + strings.Join(strArr, ", ") + "]"
 }
 
-// CalculateHash computes a hash using the FNV hash algorithm.
+// CalculateFNVHash64 computes a hash using the non-cryptographic FNV hash algorithm.
 func CalculateFNVHash64(key string) uint64 {
-	h := fnv.New64a()    // Create a new FNV hash function (32-bit size)
+	// TODO: initialize a hash function only once per table
+	h := fnv.New64a()    // Create a new FNV hash function
 	h.Write([]byte(key)) // Write the key into the hash function
-	return h.Sum64()     // Retrieve the hash value as a uint64
+	return h.Sum64()     // Retrieve the hash value
 }
