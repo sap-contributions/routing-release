@@ -130,7 +130,12 @@ func (rt *roundTripper) RoundTrip(originalRequest *http.Request) (*http.Response
 	if reqInfo.RoutePool.LoadBalancingAlgorithm == config.LOAD_BALANCE_HB {
 		headerName := reqInfo.RoutePool.HashRoutingProperties.Header
 		headerValue := request.Header.Get(headerName)
-		iter.(*route.HashBased).HeaderValue = headerValue
+		if headerValue != "" {
+			iter.(*route.HashBased).HeaderValue = headerValue
+		} else {
+			iter = reqInfo.RoutePool.FallBackToDefaultLoadBalancing(rt.logger, stickyEndpointID, mustBeSticky, rt.config.LoadBalanceAZPreference, rt.config.Zone)
+		}
+
 	}
 
 	// The selectEndpointErr needs to be tracked separately. If we get an error

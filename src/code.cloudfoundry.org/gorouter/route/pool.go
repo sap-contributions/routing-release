@@ -493,7 +493,7 @@ func (p *EndpointPool) Endpoints(logger *slog.Logger, initial string, mustBeStic
 		logger.Debug("endpoint-iterator-with-round-robin-lb-algo")
 		return NewRoundRobin(logger, p, initial, mustBeSticky, azPreference == config.AZ_PREF_LOCAL, az)
 	case config.LOAD_BALANCE_HB:
-		logger.Info("endpoint-iterator-with-hash-based-lb-algo")
+		logger.Debug("endpoint-iterator-with-hash-based-lb-algo")
 		return NewHashBased(logger, p, initial, mustBeSticky, azPreference == config.AZ_PREF_LOCAL, az)
 	default:
 		logger.Error("invalid-pool-load-balancing-algorithm",
@@ -502,6 +502,14 @@ func (p *EndpointPool) Endpoints(logger *slog.Logger, initial string, mustBeStic
 			slog.String("Path", p.contextPath))
 		return NewRoundRobin(logger, p, initial, mustBeSticky, azPreference == config.AZ_PREF_LOCAL, az)
 	}
+}
+
+func (p *EndpointPool) FallBackToDefaultLoadBalancing(logger *slog.Logger, initial string, mustBeSticky bool, azPreference string, az string) EndpointIterator {
+	logger.Error("invalid-hash-based-routing-settings",
+		slog.String("poolLBAlgorithm", p.LoadBalancingAlgorithm),
+		slog.String("Host", p.host),
+		slog.String("Path", p.contextPath))
+	return NewRoundRobin(logger, p, initial, mustBeSticky, azPreference == config.AZ_PREF_LOCAL, az)
 }
 
 func (p *EndpointPool) NumEndpoints() int {
@@ -634,7 +642,6 @@ func (p *EndpointPool) setPoolLoadBalancingAlgorithm(endpoint *Endpoint) {
 }
 
 func (p *EndpointPool) setPoolHashRoutingProperties(endpoint *Endpoint) {
-	p.logger.Info("Setting hash based properties", endpoint.HashHeaderName, endpoint.HashBalanceFactor)
 	p.HashRoutingProperties = &HashRoutingProperties{
 		Header:        endpoint.HashHeaderName,
 		BalanceFactor: endpoint.HashBalanceFactor,
