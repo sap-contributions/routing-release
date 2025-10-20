@@ -33,6 +33,7 @@ func NewMaglev(logger *slog.Logger) *Maglev {
 		lock:            &sync.RWMutex{},
 		lookupTable:     make([]int64, bigM),
 		endpointList:    make([]string, 0, 2),
+		permutation:     make([][]uint64, 0, 2),
 		logger:          logger,
 	}
 }
@@ -54,9 +55,13 @@ func (m *Maglev) Add(endpoint string) {
 		return
 	}
 
-	m.endpointList = append(m.endpointList, endpoint)
+	idx := sort.SearchStrings(m.endpointList, endpoint)
+	m.endpointList = append(m.endpointList, "")
+	copy(m.endpointList[idx+1:], m.endpointList[idx:])
+	m.endpointList[idx] = endpoint
+
 	m.numberOfEndpoints = uint64(len(m.endpointList))
-	m.generatePermutation()
+	m.generatePermutation(endpoint)
 	m.populate()
 	m.logger.Debug("endpoint added", slog.String("endpoint-id", endpoint), slog.String("lookupTable", m.PrintLookupTable()))
 }
@@ -73,9 +78,10 @@ func (m *Maglev) Remove(endpoint string) {
 	}
 
 	m.endpointList = append(m.endpointList[:index], m.endpointList[index+1:]...)
+	m.permutation = append(m.permutation[:index], m.permutation[index+1:]...)
 
 	m.numberOfEndpoints = uint64(len(m.endpointList))
-	m.generatePermutation()
+
 	m.populate()
 }
 
@@ -105,27 +111,37 @@ func (m *Maglev) hashKey(obj string) uint64 {
 }
 
 // generatePermutation creates a permutation of the lookup table for each endpoint
-func (m *Maglev) generatePermutation() {
-	m.permutation = nil
-	if len(m.endpointList) == 0 {
+func (m *Maglev) generatePermutation(endpoint string) {
+	//m.permutation = nil
+	//if len(m.endpointList) == 0 {
+	//	return
+	//}
+	//m.permutation = make([][]uint64, len(m.endpointList))
+	slices.Sort(m.endpointList)
+	pos := sort.SearchStrings(m.endpointList, endpoint)
+	if pos == len(m.endpointList) {
+		// endpoint not found
 		return
 	}
-	m.permutation = make([][]uint64, len(m.endpointList))
-	slices.Sort(m.endpointList)
 
-	for i := 0; i < len(m.endpointList); i++ {
-		endpoint := m.endpointList[i]
+	//for i := 0; i < len(m.endpointList); i++ {
+	//	endpoint := m.endpointList[i]
 
-		offset := m.calculateFNVHash64(endpoint) % m.lookupTableSize
-		skip := (m.calculateFNVHash64(endpoint) % (m.lookupTableSize - 1)) + 1
+	offset := m.calculateFNVHash64(endpoint) % m.lookupTableSize
+	skip := (m.calculateFNVHash64(endpoint) % (m.lookupTableSize - 1)) + 1
 
-		permutationForEndpoint := make([]uint64, m.lookupTableSize)
-		for j := uint64(0); j < m.lookupTableSize; j++ {
-			permutationForEndpoint[j] = (offset + j*skip) % m.lookupTableSize
-		}
-
-		m.permutation[i] = permutationForEndpoint
+	permutationForEndpoint := make([]uint64, m.lookupTableSize)
+	for j := uint64(0); j < m.lookupTableSize; j++ {
+		permutationForEndpoint[j] = (offset + j*skip) % m.lookupTableSize
 	}
+
+	// insert permutationForEndpoint at position i, shifting the rest to the right
+	m.permutation = append(m.permutation, nil)
+	copy(m.permutation[pos+1:], m.permutation[pos:])
+	m.permutation[pos] = permutationForEndpoint
+
+	//m.permutation[pos] = permutationForEndpoint
+	//}
 }
 
 // populate fills lookupTable
