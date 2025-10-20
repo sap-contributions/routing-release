@@ -47,7 +47,7 @@ func (h *HashBased) Next(attempt int) *Endpoint {
 	}
 
 	if h.pool.HashLookupTable == nil {
-		h.logger.Error("hash-based-routing-failed", slog.String("host", h.pool.host), errors.New("Lookup table is empty"))
+		h.logger.Error("hash-based-routing-failed", slog.String("host", h.pool.host), log.ErrAttr(errors.New("Lookup table is empty")))
 		return nil
 	}
 
@@ -70,7 +70,7 @@ func (h *HashBased) Next(attempt int) *Endpoint {
 
 	endpointElem := h.pool.findById(id)
 	if endpointElem == nil {
-		h.logger.Error("hash-based-routing-failed", slog.String("host", h.pool.host), errors.New("Endpoint not found in pool"), slog.String("endpoint-id", id))
+		h.logger.Error("hash-based-routing-failed", slog.String("host", h.pool.host), log.ErrAttr(errors.New("Endpoint not found in pool")), slog.String("endpoint-id", id))
 		return nil
 	}
 
