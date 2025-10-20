@@ -2,8 +2,11 @@ package route
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"sync"
+
+	log "code.cloudfoundry.org/gorouter/logger"
 )
 
 type HashBased struct {
@@ -44,24 +47,33 @@ func (h *HashBased) Next(attempt int) *Endpoint {
 	}
 
 	if h.pool.HashLookupTable == nil {
-		h.logger.Error("hash-based-routing-failed", slog.String("host", h.pool.host), slog.String("error", "Lookup table is empty"))
+		h.logger.Error("hash-based-routing-failed", slog.String("host", h.pool.host), errors.New("Lookup table is empty"))
 		return nil
 	}
 
-	// Now we can use h.HeaderValue to determine the endpoint
-	id, error := h.pool.HashLookupTable.Get(h.HeaderValue)
-	h.logger.Info("hash-based-routing", slog.String("hash header value", h.HeaderValue), slog.String("endpoint-id", id))
+	id, err := h.pool.HashLookupTable.Get(h.HeaderValue)
 
-	if error != nil {
-		h.logger.Error("hash-based-routing-failed", slog.String("host", h.pool.host), slog.String("error", "No endpoints in lookup table"))
+	if err != nil {
+		h.logger.Error(
+			"hash-based-routing-failed",
+			slog.String("host", h.pool.host),
+			log.ErrAttr(err),
+		)
+		return nil
 	}
+
+	h.logger.Debug(
+		"hash-based-routing",
+		slog.String("hash header value", h.HeaderValue),
+		slog.String("endpoint-id", id),
+	)
 
 	endpointElem := h.pool.findById(id)
 	if endpointElem == nil {
-		h.logger.Error("hash-based-routing-failed", slog.String("host", h.pool.host), slog.String("error", "Endpoint not found in pool"), slog.String("endpoint-id", id))
-
+		h.logger.Error("hash-based-routing-failed", slog.String("host", h.pool.host), errors.New("Endpoint not found in pool"), slog.String("endpoint-id", id))
 		return nil
 	}
+
 	return endpointElem.endpoint
 }
 

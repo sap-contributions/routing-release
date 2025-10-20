@@ -363,13 +363,6 @@ func (p *EndpointPool) Put(endpoint *Endpoint) PoolPutResult {
 
 		p.RouteSvcUrl = e.endpoint.RouteServiceUrl
 		p.setPoolLoadBalancingAlgorithm(e.endpoint)
-		if p.LoadBalancingAlgorithm == config.LOAD_BALANCE_HB {
-			p.logger.Info("endpoint not found..adding", slog.String("endpoint_ID", e.endpoint.PrivateInstanceId))
-			p.HashLookupTable.Add(e.endpoint.PrivateInstanceId)
-			joined := strings.Join(p.HashLookupTable.backendList, ",")
-			p.logger.Info("nodelist", slog.String("nodelist", joined))
-			p.logger.Info("lookup table", slog.String("lookup_table", p.HashLookupTable.PrintLookupTable()))
-		}
 		e.updated = time.Now()
 		p.Update()
 
@@ -392,11 +385,11 @@ func (p *EndpointPool) Put(endpoint *Endpoint) PoolPutResult {
 		p.RouteSvcUrl = e.endpoint.RouteServiceUrl
 		p.setPoolLoadBalancingAlgorithm(e.endpoint)
 		if p.LoadBalancingAlgorithm == config.LOAD_BALANCE_HB {
-			p.logger.Info("endpoint not found..adding", slog.String("endpoint_ID", e.endpoint.PrivateInstanceId))
+			p.logger.Debug("Hash-Based Routing: Adding endpoint", slog.String("endpoint_ID", e.endpoint.PrivateInstanceId))
 			p.HashLookupTable.Add(e.endpoint.PrivateInstanceId)
-			joined := strings.Join(p.HashLookupTable.backendList, ",")
+			joined := strings.Join(p.HashLookupTable.endpointList, ",")
 			p.logger.Info("nodelist", slog.String("nodelist", joined))
-			p.logger.Info("lookup table", slog.String("lookup_table", p.HashLookupTable.PrintLookupTable()))
+			p.logger.Info("lookupTable table", slog.String("lookup_table", p.HashLookupTable.PrintLookupTable()))
 
 		}
 		p.Update()
@@ -478,7 +471,6 @@ func (p *EndpointPool) removeEndpoint(e *endpointElem) {
 	p.Update()
 
 	if p.LoadBalancingAlgorithm == config.LOAD_BALANCE_HB {
-		p.logger.Info("remove endpoint", slog.String("hash_based", "true"), slog.String("endpoint_ID", e.endpoint.PrivateInstanceId))
 		p.HashLookupTable.Remove(e.endpoint.PrivateInstanceId)
 	}
 
@@ -505,7 +497,7 @@ func (p *EndpointPool) Endpoints(logger *slog.Logger, initial string, mustBeStic
 }
 
 func (p *EndpointPool) FallBackToDefaultLoadBalancing(logger *slog.Logger, initial string, mustBeSticky bool, azPreference string, az string) EndpointIterator {
-	logger.Error("invalid-hash-based-routing-settings",
+	logger.Info("hash-based-routing-header-not-found",
 		slog.String("poolLBAlgorithm", p.LoadBalancingAlgorithm),
 		slog.String("Host", p.host),
 		slog.String("Path", p.contextPath))
