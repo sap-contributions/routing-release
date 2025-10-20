@@ -3,7 +3,6 @@ package route
 import (
 	"errors"
 	"fmt"
-	"hash"
 	"hash/fnv"
 	"log/slog"
 	"slices"
@@ -25,7 +24,6 @@ type Maglev struct {
 	endpointList      []string
 	numberOfEndpoints uint64
 	lock              *sync.RWMutex
-	hashFunction      hash.Hash64
 }
 
 // NewMaglev initializes an empty maglev lookupTable table
@@ -36,7 +34,6 @@ func NewMaglev(logger *slog.Logger) *Maglev {
 		lookupTable:     make([]int64, bigM),
 		endpointList:    make([]string, 0, 2),
 		logger:          logger,
-		hashFunction:    fnv.New64a(),
 	}
 }
 
@@ -109,8 +106,8 @@ func (m *Maglev) hashKey(obj string) uint64 {
 
 // generatePermutation creates a permutation of the lookup table for each endpoint
 func (m *Maglev) generatePermutation() {
+	m.permutation = nil
 	if len(m.endpointList) == 0 {
-		m.permutation = nil
 		return
 	}
 	m.permutation = make([][]uint64, len(m.endpointList))
@@ -127,7 +124,7 @@ func (m *Maglev) generatePermutation() {
 			permutationForEndpoint[j] = (offset + j*skip) % m.lookupTableSize
 		}
 
-		m.permutation = append(m.permutation, permutationForEndpoint)
+		m.permutation[i] = permutationForEndpoint
 	}
 }
 
@@ -178,6 +175,7 @@ func (m *Maglev) PrintLookupTable() string {
 
 // calculateFNVHash64 computes a hash using the non-cryptographic FNV hash algorithm.
 func (m *Maglev) calculateFNVHash64(key string) uint64 {
-	m.hashFunction.Write([]byte(key)) // Write the key into the hash function
-	return m.hashFunction.Sum64()     // Retrieve the hash value
+	h := fnv.New64a()
+	h.Write([]byte(key))
+	return h.Sum64()
 }
