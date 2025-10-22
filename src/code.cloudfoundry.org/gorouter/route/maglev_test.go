@@ -39,9 +39,9 @@ var _ = Describe("Maglev", func() {
 				Expect(maglev.GetPermutationTable()).To(HaveLen(1))
 				Expect(maglev.GetPermutationTable()[0]).To(HaveLen(int(maglev.GetLookupTableSize())))
 
-				result, err := maglev.Get("test-key")
+				_, backend, err := maglev.GetInstanceForHashHeader("test-key")
 				Expect(err).NotTo(HaveOccurred())
-				Expect(result).To(Equal("backend1"))
+				Expect(backend).To(Equal("backend1"))
 			})
 		})
 
@@ -55,9 +55,9 @@ var _ = Describe("Maglev", func() {
 				Expect(maglev.GetPermutationTable()).To(HaveLen(1))
 				Expect(maglev.GetPermutationTable()[0]).To(HaveLen(int(maglev.GetLookupTableSize())))
 
-				result, err := maglev.Get("test-key")
+				_, backend, err := maglev.GetInstanceForHashHeader("test-key")
 				Expect(err).NotTo(HaveOccurred())
-				Expect(result).To(Equal("backend1"))
+				Expect(backend).To(Equal("backend1"))
 			})
 		})
 
@@ -76,9 +76,9 @@ var _ = Describe("Maglev", func() {
 
 				backends := make(map[string]bool)
 				for i := 0; i < 1000; i++ {
-					result, err := maglev.Get(string(rune(i)))
+					_, backend, err := maglev.GetInstanceForHashHeader(string(rune(i)))
 					Expect(err).NotTo(HaveOccurred())
-					backends[result] = true
+					backends[backend] = true
 				}
 
 				Expect(backends["backend1"]).To(BeTrue())
@@ -121,7 +121,7 @@ var _ = Describe("Maglev", func() {
 	Describe("Get", func() {
 		Context("when no backends were added", func() {
 			It("should return an error", func() {
-				_, err := maglev.Get("test-key")
+				_, _, err := maglev.GetInstanceForHashHeader("test-key")
 				Expect(err).To(HaveOccurred())
 			})
 		})
@@ -134,15 +134,15 @@ var _ = Describe("Maglev", func() {
 
 			It("should return consistent results for the same key", func() {
 				var counter = make(map[string]int)
-				var result1 string
+				var result string
 				var err error
-				for _ = range 100 {
-					result1, err = maglev.Get("consistent-key")
+				for range 100 {
+					_, result, err = maglev.GetInstanceForHashHeader("consistent-key")
 					Expect(err).NotTo(HaveOccurred())
-					counter[result1]++
+					counter[result]++
 				}
 
-				Expect(counter[result1]).To(Equal(100))
+				Expect(counter[result]).To(Equal(100))
 			})
 
 			It("should distribute keys across backends", func() {
@@ -152,9 +152,9 @@ var _ = Describe("Maglev", func() {
 
 				distribution := make(map[string]int)
 				for i := range 1000 {
-					result, err := maglev.Get(string(rune(i)))
+					_, backend, err := maglev.GetInstanceForHashHeader(string(rune(i)))
 					Expect(err).NotTo(HaveOccurred())
-					distribution[result]++
+					distribution[backend]++
 				}
 
 				Expect(distribution["backend1"]).To(BeNumerically(">", 0))
@@ -171,10 +171,98 @@ var _ = Describe("Maglev", func() {
 			})
 
 			It("should not return the removed backend", func() {
-				for _ = range 100 {
-					endpoint, err := maglev.Get("consistent-key")
+				for range 100 {
+					_, backend, err := maglev.GetInstanceForHashHeader("consistent-key")
 					Expect(err).NotTo(HaveOccurred())
-					Expect(endpoint).To(Equal("backend2"))
+					Expect(backend).To(Equal("backend2"))
+				}
+			})
+		})
+	})
+
+	Describe("GetInstanceForHashHeader", func() {
+		Context("when no backends were added", func() {
+			It("should return an error", func() {
+				_, _, err := maglev.GetInstanceForHashHeader("test-key")
+				Expect(err).To(HaveOccurred())
+			})
+		})
+
+		Context("when backends are added", func() {
+			BeforeEach(func() {
+				maglev.Add("backend1")
+				maglev.Add("backend2")
+			})
+
+			It("should return consistent results for the same key", func() {
+				var counter = make(map[uint64]int)
+				var lookupTableIndex uint64
+				var err error
+				for range 100 {
+					lookupTableIndex, _, err = maglev.GetInstanceForHashHeader("consistent-key")
+					Expect(err).NotTo(HaveOccurred())
+					counter[lookupTableIndex]++
+				}
+
+				Expect(counter[lookupTableIndex]).To(Equal(100))
+			})
+		})
+	})
+
+	Describe("GetEndpointId", func() {
+		Context("when backends are added", func() {
+			BeforeEach(func() {
+				maglev.Add("app_instance_1")
+				maglev.Add("app_instance_2")
+			})
+
+			It("should return consistent results for the same key", func() {
+				var counter = make(map[string]int)
+				var endpointID string
+				for range 100 {
+					lookupTableIndex, _, err := maglev.GetInstanceForHashHeader("consistent-key")
+					Expect(err).NotTo(HaveOccurred())
+					endpointID = maglev.GetEndpointId(lookupTableIndex)
+					Expect(err).NotTo(HaveOccurred())
+					counter[endpointID]++
+				}
+
+				Expect(counter[endpointID]).To(Equal(100))
+			})
+
+			It("should distribute keys across backends", func() {
+				maglev.Add("app_instance_1")
+				maglev.Add("app_instance_2")
+				maglev.Add("app_instance_3")
+
+				distribution := make(map[string]int)
+				for i := range 1000 {
+					lookupTableIndex, _, err := maglev.GetInstanceForHashHeader(string(rune(i)))
+					Expect(err).NotTo(HaveOccurred())
+					endpointID := maglev.GetEndpointId(lookupTableIndex)
+					Expect(err).NotTo(HaveOccurred())
+					distribution[endpointID]++
+				}
+
+				Expect(distribution["app_instance_1"]).To(BeNumerically(">", 0))
+				Expect(distribution["app_instance_2"]).To(BeNumerically(">", 0))
+				Expect(distribution["app_instance_3"]).To(BeNumerically(">", 0))
+			})
+		})
+
+		Context("when backends are removed", func() {
+			BeforeEach(func() {
+				maglev.Add("app_instance_1")
+				maglev.Add("app_instance_2")
+				maglev.Remove("app_instance_1")
+			})
+
+			It("should not return the removed backend", func() {
+				for i := range 1000 {
+					lookupTableIndex, _, err := maglev.GetInstanceForHashHeader(string(rune(i)))
+					Expect(err).NotTo(HaveOccurred())
+					endpointID := maglev.GetEndpointId(lookupTableIndex)
+					Expect(endpointID).To(Equal("app_instance_2"))
 				}
 			})
 		})
@@ -195,7 +283,7 @@ var _ = Describe("Maglev", func() {
 			initialMappings := make(map[string]string)
 
 			for _, key := range keys {
-				backend, err := maglev.Get(key)
+				_, backend, err := maglev.GetInstanceForHashHeader(key)
 				Expect(err).NotTo(HaveOccurred())
 				initialMappings[key] = backend
 			}
@@ -204,7 +292,7 @@ var _ = Describe("Maglev", func() {
 
 			changedMappings := 0
 			for _, key := range keys {
-				backend, err := maglev.Get(key)
+				_, backend, err := maglev.GetInstanceForHashHeader(key)
 				Expect(err).NotTo(HaveOccurred())
 				if initialMappings[key] != backend {
 					changedMappings++
@@ -224,7 +312,7 @@ var _ = Describe("Maglev", func() {
 				go func() {
 					defer GinkgoRecover()
 					for j := 0; j < 100; j++ {
-						_, err := maglev.Get("test-key")
+						_, _, err := maglev.GetInstanceForHashHeader("test-key")
 						Expect(err).NotTo(HaveOccurred())
 					}
 					done <- true
