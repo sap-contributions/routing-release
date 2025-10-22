@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	bigM uint64 = 293
+	bigM uint64 = 30*100 + 1 // A prime number close to 30000
 )
 
 type Maglev struct {
@@ -104,6 +104,27 @@ func (m *Maglev) Get(value string) (string, error) {
 	}
 	key := m.hashKey(value)
 	return m.endpointList[m.lookupTable[key%m.lookupTableSize]], nil
+}
+
+// GetLookupTableIndex lookup table index for the specified request header value
+func (m *Maglev) GetLookupTableIndex(value string) (uint64, error) {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
+
+	if len(m.endpointList) == 0 {
+		return 0, errors.New("no endpoint available")
+	}
+	key := m.hashKey(value)
+	index := key % m.lookupTableSize
+	return index, nil
+}
+
+// GetEndpointId by specified lookup table index
+func (m *Maglev) GetEndpointId(lookupTableIndex uint64) string {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
+
+	return m.endpointList[m.lookupTable[lookupTableIndex]]
 }
 
 func (m *Maglev) hashKey(obj string) uint64 {

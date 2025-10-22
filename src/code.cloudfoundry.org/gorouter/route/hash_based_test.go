@@ -24,8 +24,9 @@ var _ = Describe("HashBased", func() {
 			RetryAfterFailure:      2 * time.Minute,
 			Host:                   "",
 			ContextPath:            "",
-			MaxConnsPerBackend:     0,
+			MaxConnsPerBackend:     500,
 			LoadBalancingAlgorithm: config.LOAD_BALANCE_HB,
+			HashHeader:             "tenant-id",
 		})
 	})
 
@@ -60,15 +61,52 @@ var _ = Describe("HashBased", func() {
 				Expect(second).NotTo(BeNil())
 				Expect(first).To(Equal(second))
 			})
+		})
 
-			It("It selects another instance for other hash header value", func() {
+		Context("when endpoint overloaded", func() {
+			var (
+				endpoints []*route.Endpoint
+				e1        *route.Endpoint
+				e2        *route.Endpoint
+				e3        *route.Endpoint
+			)
+			It("It returns the next endpoint for the same header value when balancer factor set", func() {
+				e1 = route.NewEndpoint(&route.EndpointOpts{Host: "1.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", HashHeaderName: "tenant-id", HashBalanceFactor: 1.2, PrivateInstanceId: "ID1"})
+				e2 = route.NewEndpoint(&route.EndpointOpts{Host: "2.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", HashHeaderName: "tenant-id", HashBalanceFactor: 1.2, PrivateInstanceId: "ID2"})
+				e3 = route.NewEndpoint(&route.EndpointOpts{Host: "3.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", HashHeaderName: "tenant-id", HashBalanceFactor: 1.2, PrivateInstanceId: "ID3"})
+				endpoints = []*route.Endpoint{e1, e2, e3}
+				for _, e := range endpoints {
+					pool.Put(e)
+				}
 				iter := route.NewHashBased(logger.Logger, pool, "", false, false, "")
-				iter.(*route.HashBased).HeaderValue = "example.com"
-				Expect(iter.Next(0)).NotTo(BeNil())
-				Expect(iter.Next(0)).To(Equal(endpoints[1]))
-				Expect(iter.Next(0)).To(Equal(endpoints[1]))
-				Expect(iter.Next(0)).To(Equal(endpoints[1]))
+				iter.(*route.HashBased).HeaderValue = "tenant-1"
+				first := iter.Next(0)
+				Expect(first).To(Equal(e3))
+				for i := 0; i < 6; i++ {
+					iter.PreRequest(e3)
+				}
+				second := iter.Next(0)
+				Expect(second).NotTo(Equal(first))
 			})
+			It("It returns the same overloaded endpoint for the same header value when balancer factor not set", func() {
+				e1 = route.NewEndpoint(&route.EndpointOpts{Host: "1.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", HashHeaderName: "tenant-id", HashBalanceFactor: 0, PrivateInstanceId: "ID1"})
+				e2 = route.NewEndpoint(&route.EndpointOpts{Host: "2.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", HashHeaderName: "tenant-id", HashBalanceFactor: 0, PrivateInstanceId: "ID2"})
+				e3 = route.NewEndpoint(&route.EndpointOpts{Host: "3.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", HashHeaderName: "tenant-id", HashBalanceFactor: 0, PrivateInstanceId: "ID3"})
+				endpoints = []*route.Endpoint{e1, e2, e3}
+				for _, e := range endpoints {
+					pool.Put(e)
+				}
+				iter := route.NewHashBased(logger.Logger, pool, "", false, false, "")
+				iter.(*route.HashBased).HeaderValue = "tenant-1"
+				first := iter.Next(0)
+				Expect(first).To(Equal(e3))
+				for i := 0; i < 6; i++ {
+					iter.PreRequest(e3)
+				}
+				second := iter.Next(0)
+				Expect(second).To(Equal(first))
+			})
+
 		})
 
 		Context("when using sticky sessions", func() {
@@ -100,6 +138,13 @@ var _ = Describe("HashBased", func() {
 
 				It("returns nil when sticky endpoint doesn't exist", func() {
 					iter = route.NewHashBased(logger.Logger, pool, "nonexistent-id", true, false, "")
+					Expect(iter.Next(0)).To(BeNil())
+				})
+				It("returns nil when sticky endpoint is overloaded and mustBeSticky is true", func() {
+					iter = route.NewHashBased(logger.Logger, pool, "ID1", true, false, "")
+					for i := 0; i < 1000; i++ {
+						iter.PreRequest(endpoints[0])
+					}
 					Expect(iter.Next(0)).To(BeNil())
 				})
 			})
@@ -149,6 +194,74 @@ var _ = Describe("HashBased", func() {
 			initialCount := endpoint.Stats.NumberConnections.Count()
 			iter.PostRequest(endpoint)
 			Expect(endpoint.Stats.NumberConnections.Count()).To(Equal(initialCount - 1))
+		})
+	})
+	Describe("CalculateAverageLoad", func() {
+		var iter *route.HashBased
+		var endpoints []*route.Endpoint
+
+		BeforeEach(func() {
+			iter = route.NewHashBased(logger.Logger, pool, "", false, false, "").(*route.HashBased)
+		})
+
+		Context("when there are no endpoints", func() {
+			It("returns 0", func() {
+				Expect(iter.CalculateAverageLoad()).To(Equal(float64(0)))
+			})
+		})
+
+		Context("when all endpoints have zero connections", func() {
+			BeforeEach(func() {
+				pool.Put(route.NewEndpoint(&route.EndpointOpts{Host: "1.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", PrivateInstanceId: "ID1"}))
+				pool.Put(route.NewEndpoint(&route.EndpointOpts{Host: "2.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", PrivateInstanceId: "ID2"}))
+			})
+			It("returns 0", func() {
+				Expect(iter.CalculateAverageLoad()).To(Equal(float64(0)))
+			})
+		})
+
+		Context("when endpoints have varying connection counts", func() {
+			var e1, e2, e3 *route.Endpoint
+			BeforeEach(func() {
+				e1 = route.NewEndpoint(&route.EndpointOpts{Host: "1.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", PrivateInstanceId: "ID1"})
+				e2 = route.NewEndpoint(&route.EndpointOpts{Host: "2.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", PrivateInstanceId: "ID2"})
+				e3 = route.NewEndpoint(&route.EndpointOpts{Host: "3.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", PrivateInstanceId: "ID3"})
+				endpoints = []*route.Endpoint{e1, e2, e3}
+				for _, e := range endpoints {
+					pool.Put(e)
+				}
+				for i := 0; i < 2; i++ {
+					iter.PreRequest(e1)
+				}
+				for i := 0; i < 4; i++ {
+					iter.PreRequest(e2)
+				}
+				for i := 0; i < 6; i++ {
+					iter.PreRequest(e3)
+				}
+			})
+			It("returns the correct average", func() {
+				// in general 12 in flight requests
+				Expect(iter.CalculateAverageLoad()).To(Equal(float64(4)))
+			})
+		})
+
+		Context("when one endpoint has many connections", func() {
+			var e1, e2 *route.Endpoint
+			BeforeEach(func() {
+				e1 = route.NewEndpoint(&route.EndpointOpts{Host: "1.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", PrivateInstanceId: "ID1"})
+				e2 = route.NewEndpoint(&route.EndpointOpts{Host: "2.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", PrivateInstanceId: "ID2"})
+				endpoints = []*route.Endpoint{e1, e2}
+				for _, e := range endpoints {
+					pool.Put(e)
+				}
+				for i := 0; i < 10; i++ {
+					iter.PreRequest(e1)
+				}
+			})
+			It("returns the correct average", func() {
+				Expect(iter.CalculateAverageLoad()).To(Equal(float64(5)))
+			})
 		})
 	})
 
