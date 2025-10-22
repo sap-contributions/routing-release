@@ -15,9 +15,10 @@ import (
 type HashBased struct {
 	lock *sync.Mutex
 
-	logger       *slog.Logger
-	pool         *EndpointPool
-	lastEndpoint *Endpoint
+	logger               *slog.Logger
+	pool                 *EndpointPool
+	lastEndpoint         *Endpoint
+	lastLookupTableIndex uint64
 
 	stickyEndpointID string
 	mustBeSticky     bool
@@ -47,14 +48,14 @@ func (h *HashBased) Next(attempt int) *Endpoint {
 	h.lock.Lock()
 	defer h.lock.Unlock()
 
-	e := h.findEndpointIfStickySession()
-	if e == nil && h.mustBeSticky {
+	endpoint := h.findEndpointIfStickySession()
+	if endpoint == nil && h.mustBeSticky {
 		return nil
 	}
 
-	if e != nil {
-		h.lastEndpoint = e
-		return e
+	if endpoint != nil {
+		h.lastEndpoint = endpoint
+		return endpoint
 	}
 
 	if h.pool.HashLookupTable == nil {
@@ -62,30 +63,92 @@ func (h *HashBased) Next(attempt int) *Endpoint {
 		return nil
 	}
 
-	id, err := h.pool.HashLookupTable.Get(h.HeaderValue)
+	if attempt == 0 || h.lastLookupTableIndex == 0 {
+		initialLookupTableIndex, _, err := h.pool.HashLookupTable.GetInstanceForHashHeader(h.HeaderValue)
 
-	if err != nil {
-		h.logger.Error(
-			"hash-based-routing-failed",
-			slog.String("host", h.pool.host),
-			log.ErrAttr(err),
-		)
+		if err != nil {
+			h.logger.Error(
+				"hash-based-routing-failed",
+				slog.String("host", h.pool.host),
+				log.ErrAttr(err),
+			)
+			return nil
+		}
+
+		endpoint = h.findEndpoint(initialLookupTableIndex, attempt)
+	} else {
+		// On retries, start looking from the next index in the lookup table
+		nextIndex := (h.lastLookupTableIndex + 1) % h.pool.HashLookupTable.GetLookupTableSize()
+		endpoint = h.findEndpoint(nextIndex, attempt)
+	}
+
+	if endpoint != nil {
+		h.lastEndpoint = endpoint
+	}
+	return endpoint
+}
+
+func (h *HashBased) findEndpoint(index uint64, attempt int) *Endpoint {
+	maxIterations := len(h.pool.endpoints)
+	if maxIterations == 0 {
 		return nil
 	}
 
-	h.logger.Debug(
-		"hash-based-routing",
-		slog.String("hash header value", h.HeaderValue),
-		slog.String("endpoint-id", id),
-	)
+	// Ensure we don't exceed the lookup table size
+	lookupTableSize := h.pool.HashLookupTable.GetLookupTableSize()
 
-	endpointElem := h.pool.findById(id)
-	if endpointElem == nil {
-		h.logger.Error("hash-based-routing-failed", slog.String("host", h.pool.host), log.ErrAttr(errors.New("Endpoint not found in pool")), slog.String("endpoint-id", id))
-		return nil
+	// Normalize index
+	currentIndex := index % lookupTableSize
+	// Keep track of endpoints already visited, to avoid visiting them twice
+	visitedEndpoints := make(map[string]bool)
+
+	numberOfEndpoints := len(h.pool.HashLookupTable.GetEndpointList())
+
+	lastEndpointPrivateId := ""
+	if attempt > 0 && h.lastEndpoint != nil {
+		lastEndpointPrivateId = h.lastEndpoint.PrivateInstanceId
 	}
 
-	return endpointElem.endpoint
+	// abort when we have visited all available endpoints unsuccessfully
+	for len(visitedEndpoints) < numberOfEndpoints {
+		id := h.pool.HashLookupTable.GetEndpointId(currentIndex)
+
+		if visitedEndpoints[id] || id == lastEndpointPrivateId {
+			currentIndex = (currentIndex + 1) % lookupTableSize
+			continue
+		}
+		visitedEndpoints[id] = true
+
+		endpointElem := h.pool.findById(id)
+		if endpointElem == nil {
+			h.logger.Error("hash-based-routing-failed", slog.String("host", h.pool.host), log.ErrAttr(errors.New("Endpoint not found in pool")), slog.String("endpoint-id", id))
+			currentIndex = (currentIndex + 1) % lookupTableSize
+			continue
+		}
+
+		lastEndpointPrivateId = id
+
+		e := endpointElem.endpoint
+		if h.pool.HashRoutingProperties.BalanceFactor <= 0 || !h.isOverloaded(e) {
+			h.lastLookupTableIndex = currentIndex
+			return e
+		}
+
+		currentIndex = (currentIndex + 1) % lookupTableSize
+	}
+	// All endpoints checked and overloaded or not found
+	h.logger.Error("hash-based-routing-failed", slog.String("host", h.pool.host), log.ErrAttr(errors.New("All endpoints are overloaded")))
+	return nil
+}
+
+func (h *HashBased) isOverloaded(e *Endpoint) bool {
+	avgLoad := h.CalculateAverageLoad()
+	balanceFactor := h.pool.HashRoutingProperties.BalanceFactor
+	if float64(e.Stats.NumberConnections.Count())/avgLoad > balanceFactor {
+		h.logger.Info("hash-based-routing-endpoint-overloaded", slog.String("host", h.pool.host), slog.String("endpoint-id", e.PrivateInstanceId), slog.Int64("endpoint-connections", e.Stats.NumberConnections.Count()), slog.Float64("average-load", avgLoad))
+		return true
+	}
+	return false
 }
 
 // findEndpointIfStickySession checks if there is a sticky session endpoint and returns it if available.
@@ -138,4 +201,19 @@ func (h *HashBased) PreRequest(e *Endpoint) {
 // PostRequest decrements the in-flight request count for the selected endpoint from current Gorouter.
 func (h *HashBased) PostRequest(e *Endpoint) {
 	e.Stats.NumberConnections.Decrement()
+}
+
+func (h *HashBased) CalculateAverageLoad() float64 {
+	if len(h.pool.endpoints) == 0 {
+		return 0
+	}
+
+	var currentInFlightRequestCount int64
+	for _, endpointElem := range h.pool.endpoints {
+		endpointElem.RLock()
+		currentInFlightRequestCount += endpointElem.endpoint.Stats.NumberConnections.Count()
+		endpointElem.RUnlock()
+	}
+
+	return float64(currentInFlightRequestCount) / float64(len(h.pool.endpoints))
 }

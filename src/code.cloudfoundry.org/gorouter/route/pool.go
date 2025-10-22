@@ -202,7 +202,7 @@ type EndpointPool struct {
 	updatedAt              time.Time
 	LoadBalancingAlgorithm string
 	HashRoutingProperties  *HashRoutingProperties
-	HashLookupTable        *Maglev
+	HashLookupTable        MaglevLookup
 }
 
 type EndpointOpts struct {
@@ -617,19 +617,24 @@ func (p *EndpointPool) MarshalJSON() ([]byte, error) {
 
 // setPoolLoadBalancingAlgorithm overwrites the load balancing algorithm of a pool by that of a specified endpoint, if that is valid.
 func (p *EndpointPool) setPoolLoadBalancingAlgorithm(endpoint *Endpoint) {
-	if endpoint.LoadBalancingAlgorithm != "" && endpoint.LoadBalancingAlgorithm != p.LoadBalancingAlgorithm {
+	if endpoint.LoadBalancingAlgorithm == "" {
+		return
+	}
+
+	if endpoint.LoadBalancingAlgorithm != p.LoadBalancingAlgorithm {
 		if config.IsLoadBalancingAlgorithmValid(endpoint.LoadBalancingAlgorithm) {
 			p.LoadBalancingAlgorithm = endpoint.LoadBalancingAlgorithm
 			p.logger.Debug("setting-pool-load-balancing-algorithm-to-that-of-an-endpoint",
 				slog.String("endpointLBAlgorithm", endpoint.LoadBalancingAlgorithm),
 				slog.String("poolLBAlgorithm", p.LoadBalancingAlgorithm))
-			p.prepareHashBasedRouting(endpoint)
+
 		} else {
 			p.logger.Error("invalid-endpoint-load-balancing-algorithm-provided-keeping-pool-lb-algo",
 				slog.String("endpointLBAlgorithm", endpoint.LoadBalancingAlgorithm),
 				slog.String("poolLBAlgorithm", p.LoadBalancingAlgorithm))
 		}
 	}
+	p.prepareHashBasedRouting(endpoint)
 }
 
 func (p *EndpointPool) prepareHashBasedRouting(endpoint *Endpoint) {
@@ -639,11 +644,15 @@ func (p *EndpointPool) prepareHashBasedRouting(endpoint *Endpoint) {
 	if p.HashLookupTable == nil {
 		p.HashLookupTable = NewMaglev(p.logger)
 	}
-	p.HashRoutingProperties = &HashRoutingProperties{
+
+	newProps := &HashRoutingProperties{
 		Header:        endpoint.HashHeaderName,
 		BalanceFactor: endpoint.HashBalanceFactor,
 	}
 
+	if p.HashRoutingProperties == nil || !p.HashRoutingProperties.Equal(newProps) {
+		p.HashRoutingProperties = newProps
+	}
 }
 
 func (e *endpointElem) failed() {

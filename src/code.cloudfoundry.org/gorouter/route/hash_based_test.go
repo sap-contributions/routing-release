@@ -1,9 +1,11 @@
 package route_test
 
 import (
-	"code.cloudfoundry.org/gorouter/config"
 	_ "errors"
+	"hash/fnv"
 	"time"
+
+	"code.cloudfoundry.org/gorouter/config"
 
 	"code.cloudfoundry.org/gorouter/route"
 	"code.cloudfoundry.org/gorouter/test_util"
@@ -24,8 +26,9 @@ var _ = Describe("HashBased", func() {
 			RetryAfterFailure:      2 * time.Minute,
 			Host:                   "",
 			ContextPath:            "",
-			MaxConnsPerBackend:     0,
+			MaxConnsPerBackend:     500,
 			LoadBalancingAlgorithm: config.LOAD_BALANCE_HB,
+			HashHeader:             "tenant-id",
 		})
 	})
 
@@ -60,14 +63,110 @@ var _ = Describe("HashBased", func() {
 				Expect(second).NotTo(BeNil())
 				Expect(first).To(Equal(second))
 			})
+		})
 
-			It("It selects another instance for other hash header value", func() {
+		Context("when endpoint overloaded", func() {
+			var (
+				endpoints []*route.Endpoint
+				e1        *route.Endpoint
+				e2        *route.Endpoint
+				e3        *route.Endpoint
+			)
+			It("It returns the next endpoint for the same header value when balancer factor set", func() {
+				e1 = route.NewEndpoint(&route.EndpointOpts{Host: "1.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", HashHeaderName: "tenant-id", HashBalanceFactor: 1.2, PrivateInstanceId: "ID1"})
+				e2 = route.NewEndpoint(&route.EndpointOpts{Host: "2.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", HashHeaderName: "tenant-id", HashBalanceFactor: 1.2, PrivateInstanceId: "ID2"})
+				e3 = route.NewEndpoint(&route.EndpointOpts{Host: "3.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", HashHeaderName: "tenant-id", HashBalanceFactor: 1.2, PrivateInstanceId: "ID3"})
+				endpoints = []*route.Endpoint{e1, e2, e3}
+				for _, e := range endpoints {
+					pool.Put(e)
+				}
 				iter := route.NewHashBased(logger.Logger, pool, "", false, false, "")
-				iter.(*route.HashBased).HeaderValue = "example.com"
-				Expect(iter.Next(0)).NotTo(BeNil())
-				Expect(iter.Next(0)).To(Equal(endpoints[1]))
-				Expect(iter.Next(0)).To(Equal(endpoints[1]))
-				Expect(iter.Next(0)).To(Equal(endpoints[1]))
+				iter.(*route.HashBased).HeaderValue = "tenant-1"
+				first := iter.Next(0)
+				Expect(iter.Next(0)).To(Equal(first))
+				for i := 0; i < 6; i++ {
+					iter.PreRequest(first)
+				}
+				second := iter.Next(0)
+				Expect(second).NotTo(Equal(first))
+			})
+			It("It returns the same overloaded endpoint for the same header value when balancer factor not set", func() {
+				e1 = route.NewEndpoint(&route.EndpointOpts{Host: "1.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", HashHeaderName: "tenant-id", HashBalanceFactor: 0, PrivateInstanceId: "ID1"})
+				e2 = route.NewEndpoint(&route.EndpointOpts{Host: "2.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", HashHeaderName: "tenant-id", HashBalanceFactor: 0, PrivateInstanceId: "ID2"})
+				e3 = route.NewEndpoint(&route.EndpointOpts{Host: "3.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", HashHeaderName: "tenant-id", HashBalanceFactor: 0, PrivateInstanceId: "ID3"})
+				endpoints = []*route.Endpoint{e1, e2, e3}
+				for _, e := range endpoints {
+					pool.Put(e)
+				}
+				iter := route.NewHashBased(logger.Logger, pool, "", false, false, "")
+				iter.(*route.HashBased).HeaderValue = "tenant-1"
+				first := iter.Next(0)
+				Expect(iter.Next(0)).To(Equal(first))
+				for i := 0; i < 6; i++ {
+					iter.PreRequest(first)
+				}
+				second := iter.Next(0)
+				Expect(second).To(Equal(first))
+			})
+
+		})
+
+		Context("with retries", func() {
+			var (
+				endpoints         []*route.Endpoint
+				e1                *route.Endpoint
+				e2                *route.Endpoint
+				e3                *route.Endpoint
+				e4                *route.Endpoint
+				MaglevLookupTable = []int{2, 2, 1, 0, 1, 0, 0, 0, 2, 0, 1, 3, 1, 0, 1, 0, 3, 0, 3, 0, 0, 0, 1, 0, 1, 2, 2, 0, 3, 2, 3, 0, 1, 0, 1, 0, 3, 3, 2, 0, 3, 1, 2, 0, 3, 0, 1, 0, 2, 3, 2, 3, 2, 0, 1, 2, 1, 0, 3, 2, 2, 1, 1, 2, 1, 3, 1, 2, 2, 0, 3, 2, 3, 1, 1, 3, 1, 3, 1, 0, 2, 1, 3, 1, 2, 2, 1, 3, 2, 2, 2, 3, 3, 1, 3, 0, 3, 2, 3, 3, 0}
+			)
+			It("It returns next endpoint from maglev lookup table", func() {
+				e1 = route.NewEndpoint(&route.EndpointOpts{Host: "1.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", HashHeaderName: "tenant-id", PrivateInstanceId: "ID1"})
+				e2 = route.NewEndpoint(&route.EndpointOpts{Host: "2.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", HashHeaderName: "tenant-id", PrivateInstanceId: "ID2"})
+				e3 = route.NewEndpoint(&route.EndpointOpts{Host: "3.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", HashHeaderName: "tenant-id", PrivateInstanceId: "ID3"})
+				e4 = route.NewEndpoint(&route.EndpointOpts{Host: "4.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", HashHeaderName: "tenant-id", PrivateInstanceId: "ID4"})
+
+				endpoints = []*route.Endpoint{e1, e2, e3, e4}
+				endpointIDList := make([]string, 0, 4)
+				for _, e := range endpoints {
+					pool.Put(e)
+					endpointIDList = append(endpointIDList, e.PrivateInstanceId)
+				}
+				maglevMock := NewMockHashLookupTable(MaglevLookupTable, endpointIDList)
+				pool.HashLookupTable = maglevMock
+				iter := route.NewHashBased(logger.Logger, pool, "", false, false, "")
+				iter.(*route.HashBased).HeaderValue = "tenant-1"
+				// The returned endpoint has always ID3 according to the Maglev lookup table
+				first := iter.Next(0)
+				Expect(first).To(Equal(e4))
+				second := iter.Next(1)
+				Expect(second).To(Equal(e1))
+				third := iter.Next(2)
+				Expect(third).To(Equal(e4))
+			})
+			It("It returns the next not overloaded endpoint for the second attempt", func() {
+				e1 = route.NewEndpoint(&route.EndpointOpts{Host: "1.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", HashHeaderName: "tenant-id", HashBalanceFactor: 1.2, PrivateInstanceId: "ID1"})
+				e2 = route.NewEndpoint(&route.EndpointOpts{Host: "2.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", HashHeaderName: "tenant-id", HashBalanceFactor: 1.2, PrivateInstanceId: "ID2"})
+				e3 = route.NewEndpoint(&route.EndpointOpts{Host: "3.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", HashHeaderName: "tenant-id", HashBalanceFactor: 1.2, PrivateInstanceId: "ID3"})
+				e4 = route.NewEndpoint(&route.EndpointOpts{Host: "4.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", HashHeaderName: "tenant-id", PrivateInstanceId: "ID3"})
+
+				endpoints = []*route.Endpoint{e1, e2, e3, e4}
+				for _, e := range endpoints {
+					pool.Put(e)
+				}
+				iter := route.NewHashBased(logger.Logger, pool, "", false, false, "")
+				iter.(*route.HashBased).HeaderValue = "tenant-1"
+				firstAttemptResult := iter.Next(0)
+				Expect(iter.Next(0)).To(Equal(firstAttemptResult))
+				for i := 0; i < 6; i++ {
+					// Simulate requests to overload the endpoints
+					iter.PreRequest(e1)
+					iter.PreRequest(e2)
+				}
+				secondAttemptResult := iter.Next(1)
+				Expect(secondAttemptResult).NotTo(Equal(firstAttemptResult))
+				Expect(secondAttemptResult).NotTo(Equal(e1))
+				Expect(secondAttemptResult).NotTo(Equal(e2))
 			})
 		})
 
@@ -100,6 +199,13 @@ var _ = Describe("HashBased", func() {
 
 				It("returns nil when sticky endpoint doesn't exist", func() {
 					iter = route.NewHashBased(logger.Logger, pool, "nonexistent-id", true, false, "")
+					Expect(iter.Next(0)).To(BeNil())
+				})
+				It("returns nil when sticky endpoint is overloaded and mustBeSticky is true", func() {
+					iter = route.NewHashBased(logger.Logger, pool, "ID1", true, false, "")
+					for i := 0; i < 1000; i++ {
+						iter.PreRequest(endpoints[0])
+					}
 					Expect(iter.Next(0)).To(BeNil())
 				})
 			})
@@ -151,5 +257,144 @@ var _ = Describe("HashBased", func() {
 			Expect(endpoint.Stats.NumberConnections.Count()).To(Equal(initialCount - 1))
 		})
 	})
+	Describe("CalculateAverageLoad", func() {
+		var iter *route.HashBased
+		var endpoints []*route.Endpoint
+
+		BeforeEach(func() {
+			iter = route.NewHashBased(logger.Logger, pool, "", false, false, "").(*route.HashBased)
+		})
+
+		Context("when there are no endpoints", func() {
+			It("returns 0", func() {
+				Expect(iter.CalculateAverageLoad()).To(Equal(float64(0)))
+			})
+		})
+
+		Context("when all endpoints have zero connections", func() {
+			BeforeEach(func() {
+				pool.Put(route.NewEndpoint(&route.EndpointOpts{Host: "1.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", PrivateInstanceId: "ID1"}))
+				pool.Put(route.NewEndpoint(&route.EndpointOpts{Host: "2.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", PrivateInstanceId: "ID2"}))
+			})
+			It("returns 0", func() {
+				Expect(iter.CalculateAverageLoad()).To(Equal(float64(0)))
+			})
+		})
+
+		Context("when endpoints have varying connection counts", func() {
+			var e1, e2, e3 *route.Endpoint
+			BeforeEach(func() {
+				e1 = route.NewEndpoint(&route.EndpointOpts{Host: "1.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", PrivateInstanceId: "ID1"})
+				e2 = route.NewEndpoint(&route.EndpointOpts{Host: "2.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", PrivateInstanceId: "ID2"})
+				e3 = route.NewEndpoint(&route.EndpointOpts{Host: "3.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", PrivateInstanceId: "ID3"})
+				endpoints = []*route.Endpoint{e1, e2, e3}
+				for _, e := range endpoints {
+					pool.Put(e)
+				}
+				for i := 0; i < 2; i++ {
+					iter.PreRequest(e1)
+				}
+				for i := 0; i < 4; i++ {
+					iter.PreRequest(e2)
+				}
+				for i := 0; i < 6; i++ {
+					iter.PreRequest(e3)
+				}
+			})
+			It("returns the correct average", func() {
+				// in general 12 in flight requests
+				Expect(iter.CalculateAverageLoad()).To(Equal(float64(4)))
+			})
+		})
+
+		Context("when one endpoint has many connections", func() {
+			var e1, e2 *route.Endpoint
+			BeforeEach(func() {
+				e1 = route.NewEndpoint(&route.EndpointOpts{Host: "1.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", PrivateInstanceId: "ID1"})
+				e2 = route.NewEndpoint(&route.EndpointOpts{Host: "2.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", PrivateInstanceId: "ID2"})
+				endpoints = []*route.Endpoint{e1, e2}
+				for _, e := range endpoints {
+					pool.Put(e)
+				}
+				for i := 0; i < 10; i++ {
+					iter.PreRequest(e1)
+				}
+			})
+			It("returns the correct average", func() {
+				Expect(iter.CalculateAverageLoad()).To(Equal(float64(5)))
+			})
+		})
+	})
 
 })
+
+// MockHashLookupTable provides a simple mock implementation of MaglevLookup interface for testing.
+type MockHashLookupTable struct {
+	lookupTable  []int
+	endpointList []string
+}
+
+// NewMockHashLookupTable creates a new mock lookup table with predefined mappings
+func NewMockHashLookupTable(lookupTable []int, endpointList []string) *MockHashLookupTable {
+
+	return &MockHashLookupTable{
+		lookupTable:  lookupTable,
+		endpointList: endpointList,
+	}
+}
+
+func (m *MockHashLookupTable) GetInstanceForHashHeader(hashHeaderValue string) (uint64, string, error) {
+	if len(m.endpointList) == 0 {
+		return 0, "", nil
+	}
+	h := fnv.New64a()
+	_, _ = h.Write([]byte(hashHeaderValue))
+	key := h.Sum64()
+	index := key % m.GetLookupTableSize()
+	return index, m.endpointList[m.lookupTable[index]], nil
+
+}
+
+func (m *MockHashLookupTable) GetLookupTableSize() uint64 {
+	return uint64(len(m.lookupTable))
+}
+
+func (m *MockHashLookupTable) GetEndpointId(lookupTableIndex uint64) string {
+	return m.endpointList[m.lookupTable[lookupTableIndex]]
+}
+
+func (m *MockHashLookupTable) Add(endpoint string) {
+	// Check if endpoint already exists
+	for _, existing := range m.endpointList {
+		if existing == endpoint {
+			return
+		}
+	}
+	m.endpointList = append(m.endpointList, endpoint)
+}
+
+func (m *MockHashLookupTable) Remove(endpoint string) {
+	for i, existing := range m.endpointList {
+		if existing == endpoint {
+			m.endpointList = append(m.endpointList[:i], m.endpointList[i+1:]...)
+			return
+		}
+	}
+}
+
+func (m *MockHashLookupTable) GetEndpointList() []string {
+	return append([]string(nil), m.endpointList...) // return a copy
+}
+
+// GetLookupTable returns a copy of the current lookup table (for testing)
+func (m *MockHashLookupTable) GetLookupTable() []int {
+	return m.lookupTable // return a copy
+}
+
+// GetPermutationTable returns a copy of the current permutation table (for testing)
+func (m *MockHashLookupTable) GetPermutationTable() [][]uint64 {
+	return nil // not implemented in mock
+}
+
+// Compile-time check to ensure MockHashLookupTable implements MaglevLookup interface
+var _ route.MaglevLookup = (*MockHashLookupTable)(nil)

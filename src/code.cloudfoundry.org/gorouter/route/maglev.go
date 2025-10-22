@@ -27,6 +27,35 @@ const (
 	lookupTableSize uint64 = 1801
 )
 
+// MaglevLookup defines the interface for consistent hashing lookup table implementations.
+// This interface allows for different implementations of the Maglev algorithm and
+// enables easy testing with mock implementations.
+type MaglevLookup interface {
+	// Add a new endpoint to the lookup table
+	Add(endpoint string)
+
+	// Remove an endpoint from the lookup table
+	Remove(endpoint string)
+
+	// GetInstanceForHashHeader endpoint by specified request header value
+	GetInstanceForHashHeader(hashHeaderValue string) (uint64, string, error)
+
+	// GetEndpointId returns the endpoint ID by specified lookup table index
+	GetEndpointId(lookupTableIndex uint64) string
+
+	// GetLookupTableSize returns the size of the lookup table
+	GetLookupTableSize() uint64
+
+	// GetEndpointList returns a copy of the current endpoint list (for testing)
+	GetEndpointList() []string
+
+	// GetLookupTable returns a copy of the current lookup table (for testing)
+	GetLookupTable() []int
+
+	// GetPermutationTable returns a copy of the current permutation table (for testing)
+	GetPermutationTable() [][]uint64
+}
+
 // Maglev implementation of consistent hashing algorithm described in "Maglev: A Fast and Reliable Software Network
 // Load Balancer" (https://storage.googleapis.com/gweb-research2023-media/pubtools/2904.pdf)
 type Maglev struct {
@@ -89,23 +118,29 @@ func (m *Maglev) Remove(endpoint string) {
 	m.fillLookupTable()
 }
 
-// Get endpoint by specified request header value
-// Todo: Overload scenario: Get should return an index rather than an instance,
-// so that we can iterate to the next endpoint in case it is overloaded (e.g. via another
-// helper function that resolves the endpoint via the index)
-func (m *Maglev) Get(headerValue string) (string, error) {
+func (m *Maglev) hashKey(headerValue string) uint64 {
+	return m.calculateFNVHash64(headerValue)
+}
+
+// GetInstanceForHashHeader lookup table index and private instance ID for the specified request header value
+func (m *Maglev) GetInstanceForHashHeader(hashHeaderValue string) (uint64, string, error) {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
 
 	if len(m.endpointList) == 0 {
-		return "", errors.New("maglev-get-endpoint-no-endpoints")
+		return 0, "", errors.New("no endpoint available")
 	}
-	key := m.hashKey(headerValue)
-	return m.endpointList[m.lookupTable[key%lookupTableSize]], nil
+	key := m.hashKey(hashHeaderValue)
+	index := key % lookupTableSize
+	return index, m.endpointList[m.lookupTable[key%lookupTableSize]], nil
 }
 
-func (m *Maglev) hashKey(headerValue string) uint64 {
-	return m.calculateFNVHash64(headerValue)
+// GetEndpointId by specified lookup table index
+func (m *Maglev) GetEndpointId(lookupTableIndex uint64) string {
+	m.lock.RLock()
+	defer m.lock.RUnlock()
+
+	return m.endpointList[m.lookupTable[lookupTableIndex]]
 }
 
 // generatePermutation creates a permutationTable of the lookup table for each endpoint
@@ -220,3 +255,6 @@ func (m *Maglev) calculateFNVHash64(key string) uint64 {
 	_, _ = h.Write([]byte(key))
 	return h.Sum64()
 }
+
+// Compile-time check to ensure Maglev implements MaglevLookup interface
+var _ MaglevLookup = (*Maglev)(nil)
