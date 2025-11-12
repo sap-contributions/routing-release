@@ -58,6 +58,17 @@ func (h *HashBased) Next(attempt int) *Endpoint {
 		return endpoint
 	}
 
+	if len(h.pool.endpoints) == 0 {
+		h.logger.Warn("hash-based-routing-pool-empty", slog.String("host", h.pool.host))
+		return nil
+	}
+
+	endpoint = h.getSingleEndpoint()
+	if endpoint != nil {
+		h.lastEndpoint = endpoint
+		return endpoint
+	}
+
 	if h.pool.HashLookupTable == nil {
 		h.logger.Error("hash-based-routing-failed", slog.String("host", h.pool.host), log.ErrAttr(errors.New("Lookup table is empty")))
 		return nil
@@ -89,11 +100,6 @@ func (h *HashBased) Next(attempt int) *Endpoint {
 }
 
 func (h *HashBased) findEndpoint(index uint64, attempt int) *Endpoint {
-	maxIterations := len(h.pool.endpoints)
-	if maxIterations == 0 {
-		return nil
-	}
-
 	// Ensure we don't exceed the lookup table size
 	lookupTableSize := h.pool.HashLookupTable.GetLookupTableSize()
 
@@ -128,10 +134,9 @@ func (h *HashBased) findEndpoint(index uint64, attempt int) *Endpoint {
 
 		lastEndpointPrivateId = id
 
-		e := endpointElem.endpoint
-		if h.pool.HashRoutingProperties.BalanceFactor <= 0 || !h.isOverloaded(e) {
+		if h.pool.HashRoutingProperties.BalanceFactor <= 0 || !h.isImbalancedOrOverloaded(endpointElem) {
 			h.lastLookupTableIndex = currentIndex
-			return e
+			return endpointElem.endpoint
 		}
 
 		currentIndex = (currentIndex + 1) % lookupTableSize
@@ -141,11 +146,24 @@ func (h *HashBased) findEndpoint(index uint64, attempt int) *Endpoint {
 	return nil
 }
 
-func (h *HashBased) isOverloaded(e *Endpoint) bool {
-	avgLoad := h.CalculateAverageLoad()
+func (h *HashBased) isImbalancedOrOverloaded(e *endpointElem) bool {
+	endpoint := e.endpoint
+	return h.IsImbalancedOrOverloaded(endpoint, e.isOverloaded())
+}
+
+func (h *HashBased) IsImbalancedOrOverloaded(endpoint *Endpoint, isEndpointOverloaded bool) bool {
+	avgNumberOfInFlightRequests := h.CalculateAverageLoad()
+	currentInFlightRequestCount := endpoint.Stats.NumberConnections.Count()
 	balanceFactor := h.pool.HashRoutingProperties.BalanceFactor
-	if float64(e.Stats.NumberConnections.Count())/avgLoad > balanceFactor {
-		h.logger.Info("hash-based-routing-endpoint-overloaded", slog.String("host", h.pool.host), slog.String("endpoint-id", e.PrivateInstanceId), slog.Int64("endpoint-connections", e.Stats.NumberConnections.Count()), slog.Float64("average-load", avgLoad))
+
+	if isEndpointOverloaded {
+		h.logger.Debug("hash-based-routing-endpoint-overloaded", slog.String("host", h.pool.host), slog.String("endpoint-id", endpoint.PrivateInstanceId), slog.Int64("endpoint-connections", currentInFlightRequestCount))
+		return true
+	}
+
+	// Check if avgNumberOfInFlightRequests is 0 to avoid division by 0
+	if avgNumberOfInFlightRequests == 0 || float64(currentInFlightRequestCount)/avgNumberOfInFlightRequests > balanceFactor {
+		h.logger.Debug("hash-based-routing-endpoint-imbalanced", slog.String("host", h.pool.host), slog.String("endpoint-id", endpoint.PrivateInstanceId), slog.Int64("endpoint-connections", endpoint.Stats.NumberConnections.Count()), slog.Float64("average-load", avgNumberOfInFlightRequests))
 		return true
 	}
 	return false
@@ -203,6 +221,7 @@ func (h *HashBased) PostRequest(e *Endpoint) {
 	e.Stats.NumberConnections.Decrement()
 }
 
+// CalculateAverageLoad computes the average number of in-flight requests across all endpoints in the pool.
 func (h *HashBased) CalculateAverageLoad() float64 {
 	if len(h.pool.endpoints) == 0 {
 		return 0
@@ -216,4 +235,16 @@ func (h *HashBased) CalculateAverageLoad() float64 {
 	}
 
 	return float64(currentInFlightRequestCount) / float64(len(h.pool.endpoints))
+}
+
+func (h *HashBased) getSingleEndpoint() *Endpoint {
+	if len(h.pool.endpoints) == 1 {
+		e := h.pool.endpoints[0]
+		if e.isOverloaded() {
+			return nil
+		}
+
+		return e.endpoint
+	}
+	return nil
 }
