@@ -6,11 +6,11 @@ import (
 	"time"
 
 	"code.cloudfoundry.org/gorouter/config"
-
 	"code.cloudfoundry.org/gorouter/route"
 	"code.cloudfoundry.org/gorouter/test_util"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/gbytes"
 )
 
 var _ = Describe("HashBased", func() {
@@ -257,7 +257,83 @@ var _ = Describe("HashBased", func() {
 			Expect(endpoint.Stats.NumberConnections.Count()).To(Equal(initialCount - 1))
 		})
 	})
-	Describe("CalculateAverageLoad", func() {
+	Describe("IsImbalancedOrOverloaded", func() {
+		var iter *route.HashBased
+		var endpoints []*route.Endpoint
+
+		BeforeEach(func() {
+			iter = route.NewHashBased(logger.Logger, pool, "", false, false, "").(*route.HashBased)
+		})
+
+		Context("when endpoints have a lot of in-flight requests", func() {
+			var e1, e2, e3 *route.Endpoint
+			BeforeEach(func() {
+				e1 = route.NewEndpoint(&route.EndpointOpts{Host: "1.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", HashHeaderName: "tenant-id", HashBalanceFactor: 1.2, PrivateInstanceId: "ID1"})
+				e2 = route.NewEndpoint(&route.EndpointOpts{Host: "2.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", HashHeaderName: "tenant-id", HashBalanceFactor: 1.2, PrivateInstanceId: "ID2"})
+				e3 = route.NewEndpoint(&route.EndpointOpts{Host: "3.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", HashHeaderName: "tenant-id", HashBalanceFactor: 1.2, PrivateInstanceId: "ID3"})
+				endpoints = []*route.Endpoint{e1, e2, e3}
+				for _, e := range endpoints {
+					pool.Put(e)
+				}
+
+			})
+			It("mark the endpoint as overloaded", func() {
+				for i := 0; i < 500; i++ {
+					iter.PreRequest(e1)
+				}
+				// in general 500 in flight requests counted by e1
+				Expect(iter.IsImbalancedOrOverloaded(e1, true)).To(BeTrue())
+			})
+			It("do not mark as imbalanced if every endpoint has 499 in-flight requests", func() {
+				for i := 0; i < 498; i++ {
+					iter.PreRequest(e1)
+				}
+				for i := 0; i < 498; i++ {
+					iter.PreRequest(e2)
+				}
+				for i := 0; i < 498; i++ {
+					iter.PreRequest(e3)
+				}
+				// in general 500 in flight requests counted by e1
+				Expect(iter.IsImbalancedOrOverloaded(e1, false)).To(BeFalse())
+			})
+
+			It("mark endpoint as overloaded if every endpoint has 500 in-flight requests", func() {
+				for i := 0; i < 499; i++ {
+					iter.PreRequest(e1)
+				}
+				for i := 0; i < 499; i++ {
+					iter.PreRequest(e2)
+				}
+				for i := 0; i < 499; i++ {
+					iter.PreRequest(e3)
+				}
+				// in general 500 in flight requests counted by e1
+				Expect(iter.IsImbalancedOrOverloaded(e1, true)).To(BeTrue())
+				Eventually(logger).Should(gbytes.Say("hash-based-routing-endpoint-overloaded"))
+				Expect(iter.IsImbalancedOrOverloaded(e2, true)).To(BeTrue())
+				Expect(iter.IsImbalancedOrOverloaded(e3, true)).To(BeTrue())
+
+			})
+			It("mark as imbalanced if it has more in-flight requests", func() {
+				for i := 0; i < 300; i++ {
+					iter.PreRequest(e1)
+				}
+				for i := 0; i < 200; i++ {
+					iter.PreRequest(e2)
+				}
+				for i := 0; i < 200; i++ {
+					iter.PreRequest(e3)
+				}
+				Expect(iter.IsImbalancedOrOverloaded(e1, false)).To(BeTrue())
+				Eventually(logger).Should(gbytes.Say("hash-based-routing-endpoint-imbalanced"))
+				Expect(iter.IsImbalancedOrOverloaded(e2, false)).To(BeFalse())
+				Expect(iter.IsImbalancedOrOverloaded(e3, false)).To(BeFalse())
+			})
+		})
+	})
+
+	Describe("CalculateAverageNumberOfConnections", func() {
 		var iter *route.HashBased
 		var endpoints []*route.Endpoint
 
@@ -336,7 +412,6 @@ type MockHashLookupTable struct {
 
 // NewMockHashLookupTable creates a new mock lookup table with predefined mappings
 func NewMockHashLookupTable(lookupTable []int, endpointList []string) *MockHashLookupTable {
-
 	return &MockHashLookupTable{
 		lookupTable:  lookupTable,
 		endpointList: endpointList,
