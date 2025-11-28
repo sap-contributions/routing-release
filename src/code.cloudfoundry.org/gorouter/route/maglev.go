@@ -1,14 +1,21 @@
 package route
 
-/******************************************************************************
- * Original github.com/kkdai/maglev/maglev.go
- *
- * Copyright (c) 2019 Evan Lin (github.com/kkdai)
- *
- * This program and the accompanying materials are made available under
- * the terms of the Apache License, Version 2.0 which is available at
- * http://www.apache.org/licenses/LICENSE-2.0.
- ******************************************************************************/
+// Original https://github.com/kkdai/maglev
+//
+// Copyright (c) 2019 Evan Lin (github.com/kkdai)
+//
+// This program and the accompanying materials are made available under
+// the terms of the Apache License, Version 2.0 which is available at
+// http://www.apache.org/licenses/LICENSE-2.0.
+//
+// CHANGES:
+// - Modified for integration with CF GoRouter
+// - Added MaglevLookup interface for testability and abstraction
+// - Enhanced with structured logging using slog
+// - Added thread-safe operations
+// - Extended with getter methods for unit testing
+// - Added error handling and safety checks
+// - Customized for hash-based routing requirements
 
 import (
 	"errors"

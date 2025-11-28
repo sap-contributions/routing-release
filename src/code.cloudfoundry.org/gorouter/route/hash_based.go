@@ -28,13 +28,14 @@ type HashBased struct {
 
 // NewHashBased initializes an endpoint iterator that selects endpoints based on a hash of a header value.
 // The global properties locallyOptimistic and localAvailabilityZone will be ignored when using Hash-Based Routing.
-func NewHashBased(logger *slog.Logger, p *EndpointPool, initial string, mustBeSticky bool, locallyOptimistic bool, localAvailabilityZone string) EndpointIterator {
+func NewHashBased(logger *slog.Logger, p *EndpointPool, initial string, mustBeSticky bool, headerValue string) EndpointIterator {
 	return &HashBased{
 		logger:           logger,
 		pool:             p,
 		lock:             &sync.Mutex{},
 		stickyEndpointID: initial,
 		mustBeSticky:     mustBeSticky,
+		HeaderValue:      headerValue,
 	}
 }
 

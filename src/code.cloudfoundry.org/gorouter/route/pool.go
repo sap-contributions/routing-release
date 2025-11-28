@@ -347,6 +347,7 @@ func (p *EndpointPool) Put(endpoint *Endpoint) PoolPutResult {
 		// new one.
 		e.Lock()
 		defer e.Unlock()
+
 		oldEndpoint := e.endpoint
 		e.endpoint = endpoint
 
@@ -471,7 +472,7 @@ func (p *EndpointPool) removeEndpoint(e *endpointElem) {
 
 }
 
-func (p *EndpointPool) Endpoints(logger *slog.Logger, initial string, mustBeSticky bool, azPreference string, az string) EndpointIterator {
+func (p *EndpointPool) Endpoints(logger *slog.Logger, initial string, mustBeSticky bool, azPreference string, az string, globalLB string, request *http.Request) EndpointIterator {
 	switch p.LoadBalancingAlgorithm {
 	case config.LOAD_BALANCE_LC:
 		logger.Debug("endpoint-iterator-with-least-connection-lb-algo")
@@ -480,8 +481,13 @@ func (p *EndpointPool) Endpoints(logger *slog.Logger, initial string, mustBeStic
 		logger.Debug("endpoint-iterator-with-round-robin-lb-algo")
 		return NewRoundRobin(logger, p, initial, mustBeSticky, azPreference == config.AZ_PREF_LOCAL, az)
 	case config.LOAD_BALANCE_HB:
+		if p.HashRoutingProperties == nil || request.Header.Get(p.HashRoutingProperties.Header) == "" {
+			logger.Error("hash-routing-properties-missing", slog.String("host", p.Host()))
+			return p.FallBackToDefaultLoadBalancing(globalLB, logger, initial, mustBeSticky, azPreference, az)
+		}
+		headerValue := request.Header.Get(p.HashRoutingProperties.Header)
 		logger.Debug("endpoint-iterator-with-hash-based-lb-algo")
-		return NewHashBased(logger, p, initial, mustBeSticky, azPreference == config.AZ_PREF_LOCAL, az)
+		return NewHashBased(logger, p, initial, mustBeSticky, headerValue)
 	default:
 		logger.Error("invalid-pool-load-balancing-algorithm",
 			slog.String("poolLBAlgorithm", p.LoadBalancingAlgorithm),
