@@ -36,7 +36,7 @@ var _ = Describe("HashBased", func() {
 
 		Context("when pool is empty", func() {
 			It("does not select an endpoint", func() {
-				iter := route.NewHashBased(logger.Logger, pool, "", false, false, "")
+				iter := route.NewHashBased(logger.Logger, pool, "", false, "tenant-1")
 				Expect(iter.Next(0)).To(BeNil())
 			})
 		})
@@ -55,8 +55,7 @@ var _ = Describe("HashBased", func() {
 
 			})
 			It("It returns the same endpoint for the same header value", func() {
-				iter := route.NewHashBased(logger.Logger, pool, "", false, false, "")
-				iter.(*route.HashBased).HeaderValue = "tenant-1"
+				iter := route.NewHashBased(logger.Logger, pool, "", false, "tenant-1")
 				first := iter.Next(0)
 				second := iter.Next(0)
 				Expect(first).NotTo(BeNil())
@@ -80,8 +79,11 @@ var _ = Describe("HashBased", func() {
 				for _, e := range endpoints {
 					pool.Put(e)
 				}
-				iter := route.NewHashBased(logger.Logger, pool, "", false, false, "")
-				iter.(*route.HashBased).HeaderValue = "tenant-1"
+				iter := route.NewHashBased(logger.Logger, pool, "", false, "tenant-1")
+				// Simulate in-flight requests
+				for _, e := range endpoints {
+					iter.PreRequest(e)
+				}
 				first := iter.Next(0)
 				Expect(iter.Next(0)).To(Equal(first))
 				for i := 0; i < 6; i++ {
@@ -98,7 +100,7 @@ var _ = Describe("HashBased", func() {
 				for _, e := range endpoints {
 					pool.Put(e)
 				}
-				iter := route.NewHashBased(logger.Logger, pool, "", false, false, "")
+				iter := route.NewHashBased(logger.Logger, pool, "", false, "tenant-1")
 				iter.(*route.HashBased).HeaderValue = "tenant-1"
 				first := iter.Next(0)
 				Expect(iter.Next(0)).To(Equal(first))
@@ -134,8 +136,7 @@ var _ = Describe("HashBased", func() {
 				}
 				maglevMock := NewMockHashLookupTable(MaglevLookupTable, endpointIDList)
 				pool.HashLookupTable = maglevMock
-				iter := route.NewHashBased(logger.Logger, pool, "", false, false, "")
-				iter.(*route.HashBased).HeaderValue = "tenant-1"
+				iter := route.NewHashBased(logger.Logger, pool, "", false, "tenant-1")
 				// The returned endpoint has always ID3 according to the Maglev lookup table
 				first := iter.Next(0)
 				Expect(first).To(Equal(e4))
@@ -154,8 +155,7 @@ var _ = Describe("HashBased", func() {
 				for _, e := range endpoints {
 					pool.Put(e)
 				}
-				iter := route.NewHashBased(logger.Logger, pool, "", false, false, "")
-				iter.(*route.HashBased).HeaderValue = "tenant-1"
+				iter := route.NewHashBased(logger.Logger, pool, "", false, "tenant-1")
 				firstAttemptResult := iter.Next(0)
 				Expect(iter.Next(0)).To(Equal(firstAttemptResult))
 				for i := 0; i < 6; i++ {
@@ -187,22 +187,19 @@ var _ = Describe("HashBased", func() {
 			})
 
 			Context("when mustBeSticky is true", func() {
-				BeforeEach(func() {
-					iter = route.NewHashBased(logger.Logger, pool, "ID1", true, false, "")
-				})
-
 				It("returns the sticky endpoint when it exists", func() {
+					iter = route.NewHashBased(logger.Logger, pool, "ID1", true, "abc")
 					endpoint := iter.Next(0)
 					Expect(endpoint).NotTo(BeNil())
 					Expect(endpoint.PrivateInstanceId).To(Equal("ID1"))
 				})
 
 				It("returns nil when sticky endpoint doesn't exist", func() {
-					iter = route.NewHashBased(logger.Logger, pool, "nonexistent-id", true, false, "")
+					iter = route.NewHashBased(logger.Logger, pool, "nonexistent-id", true, "abc")
 					Expect(iter.Next(0)).To(BeNil())
 				})
 				It("returns nil when sticky endpoint is overloaded and mustBeSticky is true", func() {
-					iter = route.NewHashBased(logger.Logger, pool, "ID1", true, false, "")
+					iter = route.NewHashBased(logger.Logger, pool, "ID1", true, "abc")
 					for i := 0; i < 1000; i++ {
 						iter.PreRequest(endpoints[0])
 					}
@@ -212,7 +209,7 @@ var _ = Describe("HashBased", func() {
 
 			Context("when mustBeSticky is false", func() {
 				BeforeEach(func() {
-					iter = route.NewHashBased(logger.Logger, pool, "ID1", false, false, "")
+					iter = route.NewHashBased(logger.Logger, pool, "ID1", false, "some-value")
 				})
 
 				It("returns the sticky endpoint when it exists", func() {
@@ -222,9 +219,7 @@ var _ = Describe("HashBased", func() {
 				})
 
 				It("falls back to hash-based routing when sticky endpoint doesn't exist", func() {
-					iter = route.NewHashBased(logger.Logger, pool, "nonexistent-id", false, false, "")
-					hashIter := iter.(*route.HashBased)
-					hashIter.HeaderValue = "some-value"
+					iter = route.NewHashBased(logger.Logger, pool, "nonexistent-id", false, "some-value")
 					endpoint := iter.Next(0)
 					Expect(endpoint).NotTo(BeNil())
 				})
@@ -241,7 +236,7 @@ var _ = Describe("HashBased", func() {
 		BeforeEach(func() {
 			endpoint = route.NewEndpoint(&route.EndpointOpts{Host: "1.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", PrivateInstanceId: "ID1"})
 			pool.Put(endpoint)
-			iter = route.NewHashBased(logger.Logger, pool, "", false, false, "")
+			iter = route.NewHashBased(logger.Logger, pool, "", false, "abc")
 		})
 
 		It("increments connection count on PreRequest", func() {
@@ -262,7 +257,7 @@ var _ = Describe("HashBased", func() {
 		var endpoints []*route.Endpoint
 
 		BeforeEach(func() {
-			iter = route.NewHashBased(logger.Logger, pool, "", false, false, "").(*route.HashBased)
+			iter = route.NewHashBased(logger.Logger, pool, "", false, "abc").(*route.HashBased)
 		})
 
 		Context("when endpoints have a lot of in-flight requests", func() {
@@ -338,7 +333,7 @@ var _ = Describe("HashBased", func() {
 		var endpoints []*route.Endpoint
 
 		BeforeEach(func() {
-			iter = route.NewHashBased(logger.Logger, pool, "", false, false, "").(*route.HashBased)
+			iter = route.NewHashBased(logger.Logger, pool, "", false, "abc").(*route.HashBased)
 		})
 
 		Context("when there are no endpoints", func() {
