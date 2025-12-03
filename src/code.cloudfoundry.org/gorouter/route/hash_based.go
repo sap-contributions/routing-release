@@ -163,7 +163,7 @@ func (h *HashBased) IsImbalancedOrOverloaded(endpoint *Endpoint, isEndpointOverl
 	}
 
 	// Check if avgNumberOfInFlightRequests is 0 to avoid division by 0
-	if avgNumberOfInFlightRequests == 0 || float64(currentInFlightRequestCount)/avgNumberOfInFlightRequests > balanceFactor {
+	if avgNumberOfInFlightRequests != 0 && float64(currentInFlightRequestCount)/avgNumberOfInFlightRequests > balanceFactor {
 		h.logger.Debug("hash-based-routing-endpoint-imbalanced", slog.String("host", h.pool.host), slog.String("endpoint-id", endpoint.PrivateInstanceId), slog.Int64("endpoint-connections", endpoint.Stats.NumberConnections.Count()), slog.Float64("average-load", avgNumberOfInFlightRequests))
 		return true
 	}
