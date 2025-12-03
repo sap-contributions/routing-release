@@ -80,10 +80,6 @@ var _ = Describe("HashBased", func() {
 					pool.Put(e)
 				}
 				iter := route.NewHashBased(logger.Logger, pool, "", false, "tenant-1")
-				// Simulate in-flight requests
-				for _, e := range endpoints {
-					iter.PreRequest(e)
-				}
 				first := iter.Next(0)
 				Expect(iter.Next(0)).To(Equal(first))
 				for i := 0; i < 6; i++ {
