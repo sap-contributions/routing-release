@@ -688,7 +688,7 @@ func (e *Endpoint) MarshalJSON() ([]byte, error) {
 		ServerCertDomainSAN    string            `json:"server_cert_domain_san,omitempty"`
 		LoadBalancingAlgorithm string            `json:"load_balancing_algorithm,omitempty"`
 		HashHeader             string            `json:"hash_header,omitempty"`
-		HashBalance            float64           `json:"hash_balance,omitempty"`
+		HashBalance            float64           `json:"hash_balance,omitempty,string"`
 	}
 
 	jsonObj.Address = e.addr
