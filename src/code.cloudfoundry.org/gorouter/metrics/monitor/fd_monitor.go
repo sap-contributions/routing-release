@@ -29,7 +29,7 @@ func NewFileDescriptor(path string, ticker *time.Ticker, reporter metrics.Metric
 	}
 }
 
-func (f *FileDescriptor) Run(signals <-chan os.Signal, ready chan<- struct{}) error {
+func (f *FileDescriptor) Run(done <-chan struct{}, ready chan<- struct{}) error {
 	close(ready)
 	for {
 		select {
@@ -59,7 +59,7 @@ func (f *FileDescriptor) Run(signals <-chan os.Signal, ready chan<- struct{}) er
 			}
 			f.reporter.CaptureFoundFileDescriptors(numFds)
 
-		case <-signals:
+		case <-done:
 			f.logger.Info("exited")
 			return nil
 		}

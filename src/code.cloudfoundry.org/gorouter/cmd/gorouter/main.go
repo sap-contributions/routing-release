@@ -7,12 +7,14 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
 	"runtime"
 	"syscall"
 	"time"
 
 	"code.cloudfoundry.org/gorouter/logadapter"
 	"code.cloudfoundry.org/gorouter/metrics_prometheus"
+	"golang.org/x/sync/errgroup"
 
 	"code.cloudfoundry.org/clock"
 	"code.cloudfoundry.org/debugserver"
@@ -21,9 +23,6 @@ import (
 	"github.com/cloudfoundry/dropsonde/metric_sender"
 	"github.com/cloudfoundry/dropsonde/metricbatcher"
 	"github.com/nats-io/nats.go"
-	"github.com/tedsuo/ifrit"
-	"github.com/tedsuo/ifrit/grouper"
-	"github.com/tedsuo/ifrit/sigmon"
 
 	"code.cloudfoundry.org/gorouter/accesslog"
 	"code.cloudfoundry.org/gorouter/common/health"
@@ -241,34 +240,100 @@ func main() {
 		grlog.Fatal(logger, "initialize-router-error", grlog.ErrAttr(err))
 	}
 
-	members := grouper.Members{}
-
+	var routeFetcher *route_fetcher.RouteFetcher
 	if c.RoutingApiEnabled() {
-		routeFetcher := setupRouteFetcher(grlog.CreateLoggerWithSource(prefix, "route-fetcher"), c, registry, routingAPIClient)
-		members = append(members, grouper.Member{Name: "router-fetcher", Runner: routeFetcher})
+		routeFetcher = setupRouteFetcher(grlog.CreateLoggerWithSource(prefix, "route-fetcher"), c, registry, routingAPIClient)
 	}
 
 	subscriber := mbus.NewSubscriber(natsClient, registry, c, natsReconnected, grlog.CreateLoggerWithSource(prefix, "subscriber"))
 	natsMonitor := initializeNATSMonitor(subscriber, metricReporter, grlog.CreateLoggerWithSource(prefix, "NATSMonitor"))
 
-	members = append(members, grouper.Member{Name: "fdMonitor", Runner: fdMonitor})
-	members = append(members, grouper.Member{Name: "subscriber", Runner: subscriber})
-	members = append(members, grouper.Member{Name: "natsMonitor", Runner: natsMonitor})
-	members = append(members, grouper.Member{Name: "router", Runner: goRouter})
+	// gorouter wants to know if it should drain. This would be better done by
+	// having a dedicated method on gorouter which we can call to drain it but
+	// for now we can work around this.
+	routerSignals := make(chan os.Signal, 1)
+	goRouter.OnErrOrSignal(routerSignals)
 
-	group := grouper.NewOrdered(os.Interrupt, members)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	group, ctx := errgroup.WithContext(ctx)
 
-	monitor := ifrit.Invoke(sigmon.New(group, syscall.SIGTERM, syscall.SIGINT, syscall.SIGUSR1))
+	// Setup the singal handler, this will take care of what `sigmon.New` used
+	// to do. With a bit more work this could be wired up to replicate the OG
+	// behaviour of relaying the signals to the individual processes. But from
+	// what I've seen we mostly use it as a signal to stop, not caring about the
+	// exact signal.
+	signals := make(chan os.Signal, 1)
+	signal.Notify(signals, syscall.SIGTERM, syscall.SIGINT, syscall.SIGUSR1)
+	go func() {
+		for sig := range signals {
+			// Copy the signal to the goRouter as it has more logic based on the
+			// signal received. We give the same gurantees as signal.Notify, if
+			// signals are not being read we discard them.
+			select {
+			case routerSignals <- sig:
+			default: // skip the signal if the channel is full.
+			}
+
+			cancel()
+		}
+	}()
+
+	// See explanation below, this depends on routing-api being enabled.
+	if routeFetcher != nil {
+		ready := make(chan struct{})
+		group.Go(func() error {
+			return routeFetcher.Run(ctx.Done(), ready)
+		})
+		<-ready
+	}
+
+	// ready is the same as before, we use it to determine if we should move on
+	// to the next goroutine or not. If you don't care about an oderly start
+	// just fire away all the routines and mark yourself healthy once all of the
+	// returned.
+	ready := make(chan struct{})
+	// This starts the goroutine in the background. Should it terminate and
+	// return an error the associated context (see above) is cancelled which,
+	// since we pass the done channel to each one, causes all goroutines to be
+	// stopped.
+	group.Go(func() error {
+		// The Run pattern already somehwat aligns with our new pattern, it just
+		// needs a type change on the cannel from `os.Signal` to `struct{}`.
+		return fdMonitor.Run(ctx.Done(), ready)
+	})
+	// Wait until this goroutine marks itself as ready by closing the channel we
+	// gave it.
+	<-ready
+
+	// And repeat. (you might want to use different names for the ready
+	// channels ¯\_(ツ)_/¯)
+	ready = make(chan struct{})
+	group.Go(func() error {
+		return subscriber.Run(ctx.Done(), ready)
+	})
+	<-ready
+
+	ready = make(chan struct{})
+	group.Go(func() error {
+		return natsMonitor.Run(ctx.Done(), ready)
+	})
+	<-ready
+
+	ready = make(chan struct{})
+	group.Go(func() error {
+		return goRouter.Run(ctx.Done(), ready)
+	})
+	<-ready
 
 	go func() {
 		time.Sleep(c.RouteLatencyMetricMuzzleDuration)    // this way we avoid reporting metrics for pre-existing routes
 		metricReporter.UnmuzzleRouteRegistrationLatency() // Required for Envelope V1. Keep it while we have both Envelope V1 and Prometheus.
 	}()
 
-	<-monitor.Ready()
 	h.SetHealth(health.Healthy)
 
-	err = <-monitor.Wait()
+	err = group.Wait()
 	if err != nil {
 		grlog.Fatal(logger, "gorouter.exited-with-failure", grlog.ErrAttr(err))
 	}

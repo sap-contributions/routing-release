@@ -2,7 +2,6 @@ package monitor
 
 import (
 	"log/slog"
-	"os"
 	"time"
 
 	log "code.cloudfoundry.org/gorouter/logger"
@@ -22,7 +21,7 @@ type NATSMonitor struct {
 	Logger     *slog.Logger
 }
 
-func (n *NATSMonitor) Run(signals <-chan os.Signal, ready chan<- struct{}) error {
+func (n *NATSMonitor) Run(done <-chan struct{}, ready chan<- struct{}) error {
 	close(ready)
 	for {
 		select {
@@ -38,7 +37,7 @@ func (n *NATSMonitor) Run(signals <-chan os.Signal, ready chan<- struct{}) error
 				n.Logger.Error("error-retrieving-nats-subscription-dropped-messages", log.ErrAttr(err))
 			}
 			n.Reporter.CaptureNATSDroppedMessages(droppedMsgs)
-		case <-signals:
+		case <-done:
 			n.Logger.Info("exited")
 			return nil
 		}

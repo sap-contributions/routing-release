@@ -195,7 +195,7 @@ func NewRouter(
 // golang's default was 1mb. We want to make this explicit, so that we're able to create access logs via our own handler to process MAX_HEADER_BYTES
 const MAX_HEADER_BYTES = 1024 * 1024
 
-func (r *Router) Run(signals <-chan os.Signal, ready chan<- struct{}) error {
+func (r *Router) Run(done <-chan struct{}, ready chan<- struct{}) error {
 	r.registry.StartPruningCycle()
 
 	err := r.RegisterComponent()
@@ -238,19 +238,18 @@ func (r *Router) Run(signals <-chan os.Signal, ready chan<- struct{}) error {
 
 	close(ready)
 
-	r.OnErrOrSignal(signals, r.errChan)
-
 	return nil
 }
 
-func (r *Router) OnErrOrSignal(signals <-chan os.Signal, errChan chan error) {
+func (r *Router) OnErrOrSignal(signals <-chan os.Signal) {
 	select {
-	case err := <-errChan:
+	case err := <-r.errChan:
 		if err != nil {
 			r.logger.Error("Error occurred", log.ErrAttr(err))
 			r.health.SetHealth(health.Degraded)
 		}
 	case sig := <-signals:
+		// TODO: this doesn't seem right.
 		go func() {
 			for sig := range signals {
 				r.logger.Info(

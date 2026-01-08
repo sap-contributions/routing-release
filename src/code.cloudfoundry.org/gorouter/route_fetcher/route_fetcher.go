@@ -3,7 +3,6 @@ package route_fetcher
 import (
 	"context"
 	"log/slog"
-	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -66,7 +65,7 @@ func NewRouteFetcher(
 	}
 }
 
-func (r *RouteFetcher) Run(signals <-chan os.Signal, ready chan<- struct{}) error {
+func (r *RouteFetcher) Run(done <-chan struct{}, ready chan<- struct{}) error {
 	r.startEventCycle()
 
 	ticker := r.clock.NewTicker(r.FetchRoutesInterval)
@@ -84,7 +83,7 @@ func (r *RouteFetcher) Run(signals <-chan os.Signal, ready chan<- struct{}) erro
 		case e := <-r.eventChannel:
 			r.HandleEvent(e)
 
-		case <-signals:
+		case <-done:
 			r.logger.Info("stopping")
 			atomic.StoreInt32(&r.stopEventSource, 1)
 			if es := r.eventSource.Load(); es != nil {

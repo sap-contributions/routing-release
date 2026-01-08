@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"os"
 	"strings"
 	"time"
 
@@ -145,7 +144,7 @@ func NewSubscriber(
 }
 
 // Run manages the lifecycle of the subscriber process
-func (s *Subscriber) Run(signals <-chan os.Signal, ready chan<- struct{}) error {
+func (s *Subscriber) Run(done <-chan struct{}, ready chan<- struct{}) error {
 	s.logger.Info("subscriber-starting")
 	if s.mbusClient == nil {
 		return errors.New("subscriber: nil mbus client")
@@ -173,7 +172,7 @@ func (s *Subscriber) Run(signals <-chan os.Signal, ready chan<- struct{}) error 
 			if err != nil {
 				s.logger.Error("failed-to-send-start-message", log.ErrAttr(err))
 			}
-		case <-signals:
+		case <-done:
 			s.logger.Info("exited")
 			return nil
 		}
