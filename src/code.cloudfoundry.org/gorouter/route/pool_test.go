@@ -198,8 +198,8 @@ var _ = Describe("EndpointPool", func() {
 
 	Context("Put", func() {
 		var (
-			az           = "meow-zone"
-			azPreference = "none"
+			az                = "meow-zone"
+			locallyOptimistic = false
 		)
 
 		It("adds endpoints", func() {
@@ -246,7 +246,7 @@ var _ = Describe("EndpointPool", func() {
 				endpoint := route.NewEndpoint(&route.EndpointOpts{Host: "1.2.3.4", Port: 5678, ModificationTag: modTag2})
 
 				Expect(pool.Put(endpoint)).To(Equal(route.EndpointUpdated))
-				Expect(pool.Endpoints(logger.Logger, "", false, azPreference, az, config.LOAD_BALANCE_RR, nil).Next(0).ModificationTag).To(Equal(modTag2))
+				Expect(pool.Endpoints(logger.Logger, "", false, locallyOptimistic, az, config.LOAD_BALANCE_RR, nil).Next(0).ModificationTag).To(Equal(modTag2))
 			})
 
 			Context("when modification_tag is older", func() {
@@ -261,7 +261,7 @@ var _ = Describe("EndpointPool", func() {
 					endpoint := route.NewEndpoint(&route.EndpointOpts{Host: "1.2.3.4", Port: 5678, ModificationTag: olderModTag})
 
 					Expect(pool.Put(endpoint)).To(Equal(route.EndpointUnmodified))
-					Expect(pool.Endpoints(logger.Logger, "", false, azPreference, az, config.LOAD_BALANCE_RR, nil).Next(0).ModificationTag).To(Equal(modTag2))
+					Expect(pool.Endpoints(logger.Logger, "", false, locallyOptimistic, az, config.LOAD_BALANCE_RR, nil).Next(0).ModificationTag).To(Equal(modTag2))
 				})
 			})
 		})
@@ -297,7 +297,9 @@ var _ = Describe("EndpointPool", func() {
 		})
 	})
 	Context("Customizable Per Route Load Balancing", func() {
-
+		var (
+			locallyOptimistic = false
+		)
 		Context("Load Balancing Algorithm of a pool", func() {
 			It("has a value specified in the pool options", func() {
 				poolWithLBAlgo := route.NewPool(&route.PoolOpts{
@@ -312,7 +314,7 @@ var _ = Describe("EndpointPool", func() {
 					Logger:                 logger.Logger,
 					LoadBalancingAlgorithm: "wrong-lb-algo",
 				})
-				iterator := poolWithLBAlgo2.Endpoints(logger.Logger, "", false, "none", "zone", config.LOAD_BALANCE_RR, nil)
+				iterator := poolWithLBAlgo2.Endpoints(logger.Logger, "", false, locallyOptimistic, "zone", config.LOAD_BALANCE_RR, nil)
 				Expect(iterator).To(BeAssignableToTypeOf(&route.RoundRobin{}))
 				Eventually(logger).Should(gbytes.Say(`invalid-pool-load-balancing-algorithm`))
 			})
@@ -322,7 +324,7 @@ var _ = Describe("EndpointPool", func() {
 					Logger:                 logger.Logger,
 					LoadBalancingAlgorithm: config.LOAD_BALANCE_LC,
 				})
-				iterator := poolWithLBAlgoLC.Endpoints(logger.Logger, "", false, "none", "az", config.LOAD_BALANCE_LC, nil)
+				iterator := poolWithLBAlgoLC.Endpoints(logger.Logger, "", false, locallyOptimistic, "az", config.LOAD_BALANCE_LC, nil)
 				Expect(iterator).To(BeAssignableToTypeOf(&route.LeastConnection{}))
 				Eventually(logger).Should(gbytes.Say(`endpoint-iterator-with-least-connection-lb-algo`))
 			})
@@ -332,7 +334,7 @@ var _ = Describe("EndpointPool", func() {
 					Logger:                 logger.Logger,
 					LoadBalancingAlgorithm: config.LOAD_BALANCE_RR,
 				})
-				iterator := poolWithLBAlgoLC.Endpoints(logger.Logger, "", false, "none", "az", config.LOAD_BALANCE_RR, nil)
+				iterator := poolWithLBAlgoLC.Endpoints(logger.Logger, "", false, locallyOptimistic, "az", config.LOAD_BALANCE_RR, nil)
 				Expect(iterator).To(BeAssignableToTypeOf(&route.RoundRobin{}))
 				Eventually(logger).Should(gbytes.Say(`endpoint-iterator-with-round-robin-lb-algo`))
 			})
@@ -537,10 +539,10 @@ var _ = Describe("EndpointPool", func() {
 			Context("when a read connection is reset", func() {
 				It("marks the endpoint as failed", func() {
 					az := "meow-zone"
-					azPreference := "none"
+					locallyOptimistic := false
 					connectionResetError := &net.OpError{Op: "read", Err: errors.New("read: connection reset by peer")}
 					pool.EndpointFailed(failedEndpoint, connectionResetError)
-					i := pool.Endpoints(logger.Logger, "", false, azPreference, az, config.LOAD_BALANCE_RR, nil)
+					i := pool.Endpoints(logger.Logger, "", false, locallyOptimistic, az, config.LOAD_BALANCE_RR, nil)
 					epOne := i.Next(0)
 					epTwo := i.Next(1)
 					Expect(epOne).To(Equal(epTwo))
