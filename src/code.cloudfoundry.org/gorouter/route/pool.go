@@ -472,36 +472,31 @@ func (p *EndpointPool) removeEndpoint(e *endpointElem) {
 
 }
 
-func (p *EndpointPool) Endpoints(logger *slog.Logger, initial string, mustBeSticky bool, azPreference string, az string, globalLB string, request *http.Request) EndpointIterator {
-	locallyOptimistic := azPreference == config.AZ_PREF_LOCAL
-
+func (p *EndpointPool) Endpoints(logger *slog.Logger, initial string, mustBeSticky bool, locallyOptimistic bool, az string, globalLB string, header *http.Header) EndpointIterator {
 	// For hash-based routing, validate inputs and get header value
 	if p.LoadBalancingAlgorithm == config.LOAD_BALANCE_HB {
-		valid, headerValue := p.hashBasedInputsValid(request, p.HashRoutingProperties, logger)
-		if !valid {
-			logger.Info("hash-based-routing-header-not-found",
-				slog.String("Host", p.host),
-				slog.String("Path", p.contextPath))
+		headerValue := p.hashBasedInputsValid(header, p.HashRoutingProperties, logger)
+		if headerValue == "" {
 			return p.createIterator(globalLB, logger, initial, mustBeSticky, locallyOptimistic, az)
 		}
-		logger.Debug("endpoint-iterator-with-hash-based-lb-algo")
 		return NewHashBased(logger, p, initial, mustBeSticky, headerValue)
 	}
 
 	return p.createIterator(p.LoadBalancingAlgorithm, logger, initial, mustBeSticky, locallyOptimistic, az)
 }
 
-func (p *EndpointPool) hashBasedInputsValid(request *http.Request, hashProps *HashRoutingProperties, logger *slog.Logger) (bool, string) {
-	if hashProps == nil {
+func (p *EndpointPool) hashBasedInputsValid(header *http.Header, hashProps *HashRoutingProperties, logger *slog.Logger) string {
+	if hashProps == nil || hashProps.Header == "" {
 		logger.Error("hash-routing-properties-missing", slog.String("host", p.Host()))
-		return false, ""
+		return ""
 	}
-	hashHeader := request.Header.Get(hashProps.Header)
+	hashHeader := header.Get(hashProps.Header)
 	if hashHeader == "" {
-		logger.Error("hash-based-routing-header-not-found", slog.String("host", p.Host()))
-		return false, ""
+		logger.Warn("hash-header-value-not-found",
+			slog.String("Host", p.host),
+			slog.String("Path", p.contextPath))
 	}
-	return true, hashHeader
+	return hashHeader
 }
 
 func (p *EndpointPool) createIterator(lbAlgo string, logger *slog.Logger, initial string, mustBeSticky bool, locallyOptimistic bool, az string) EndpointIterator {
