@@ -473,45 +473,53 @@ func (p *EndpointPool) removeEndpoint(e *endpointElem) {
 }
 
 func (p *EndpointPool) Endpoints(logger *slog.Logger, initial string, mustBeSticky bool, azPreference string, az string, globalLB string, request *http.Request) EndpointIterator {
-	switch p.LoadBalancingAlgorithm {
-	case config.LOAD_BALANCE_LC:
-		logger.Debug("endpoint-iterator-with-least-connection-lb-algo")
-		return NewLeastConnection(logger, p, initial, mustBeSticky, azPreference == config.AZ_PREF_LOCAL, az)
-	case config.LOAD_BALANCE_RR:
-		logger.Debug("endpoint-iterator-with-round-robin-lb-algo")
-		return NewRoundRobin(logger, p, initial, mustBeSticky, azPreference == config.AZ_PREF_LOCAL, az)
-	case config.LOAD_BALANCE_HB:
-		if p.HashRoutingProperties == nil || request.Header.Get(p.HashRoutingProperties.Header) == "" {
-			logger.Error("hash-routing-properties-missing", slog.String("host", p.Host()))
-			return p.FallBackToDefaultLoadBalancing(globalLB, logger, initial, mustBeSticky, azPreference, az)
+	locallyOptimistic := azPreference == config.AZ_PREF_LOCAL
+
+	// For hash-based routing, validate inputs and get header value
+	if p.LoadBalancingAlgorithm == config.LOAD_BALANCE_HB {
+		valid, headerValue := p.hashBasedInputsValid(request, p.HashRoutingProperties, logger)
+		if !valid {
+			logger.Info("hash-based-routing-header-not-found",
+				slog.String("Host", p.host),
+				slog.String("Path", p.contextPath))
+			return p.createIterator(globalLB, logger, initial, mustBeSticky, locallyOptimistic, az)
 		}
-		headerValue := request.Header.Get(p.HashRoutingProperties.Header)
 		logger.Debug("endpoint-iterator-with-hash-based-lb-algo")
 		return NewHashBased(logger, p, initial, mustBeSticky, headerValue)
-	default:
-		logger.Error("invalid-pool-load-balancing-algorithm",
-			slog.String("poolLBAlgorithm", p.LoadBalancingAlgorithm),
-			slog.String("Host", p.host),
-			slog.String("Path", p.contextPath))
-		return NewRoundRobin(logger, p, initial, mustBeSticky, azPreference == config.AZ_PREF_LOCAL, az)
 	}
+
+	return p.createIterator(p.LoadBalancingAlgorithm, logger, initial, mustBeSticky, locallyOptimistic, az)
 }
 
-func (p *EndpointPool) FallBackToDefaultLoadBalancing(defaultLBAlgo string, logger *slog.Logger, initial string, mustBeSticky bool, azPreference string, az string) EndpointIterator {
-	logger.Info("hash-based-routing-header-not-found",
-		slog.String("poolLBAlgorithm", p.LoadBalancingAlgorithm),
-		slog.String("Host", p.host),
-		slog.String("Path", p.contextPath))
+func (p *EndpointPool) hashBasedInputsValid(request *http.Request, hashProps *HashRoutingProperties, logger *slog.Logger) (bool, string) {
+	if hashProps == nil {
+		logger.Error("hash-routing-properties-missing", slog.String("host", p.Host()))
+		return false, ""
+	}
+	hashHeader := request.Header.Get(hashProps.Header)
+	if hashHeader == "" {
+		logger.Error("hash-based-routing-header-not-found", slog.String("host", p.Host()))
+		return false, ""
+	}
+	return true, hashHeader
+}
 
-	switch defaultLBAlgo {
+func (p *EndpointPool) createIterator(lbAlgo string, logger *slog.Logger, initial string, mustBeSticky bool, locallyOptimistic bool, az string) EndpointIterator {
+	switch lbAlgo {
 	case config.LOAD_BALANCE_LC:
 		logger.Debug("endpoint-iterator-with-least-connection-lb-algo")
-		return NewLeastConnection(logger, p, initial, mustBeSticky, azPreference == config.AZ_PREF_LOCAL, az)
+		return NewLeastConnection(logger, p, initial, mustBeSticky, locallyOptimistic, az)
 	case config.LOAD_BALANCE_RR:
 		logger.Debug("endpoint-iterator-with-round-robin-lb-algo")
-		return NewRoundRobin(logger, p, initial, mustBeSticky, azPreference == config.AZ_PREF_LOCAL, az)
+		return NewRoundRobin(logger, p, initial, mustBeSticky, locallyOptimistic, az)
+	default:
+		logger.Error("invalid-pool-load-balancing-algorithm",
+			slog.String("poolLBAlgorithm", lbAlgo),
+			slog.String("Host", p.host),
+			slog.String("Path", p.contextPath))
+		logger.Debug("endpoint-iterator-with-round-robin-lb-algo")
+		return NewRoundRobin(logger, p, initial, mustBeSticky, locallyOptimistic, az)
 	}
-	return NewRoundRobin(logger, p, initial, mustBeSticky, azPreference == config.AZ_PREF_LOCAL, az)
 }
 
 func (p *EndpointPool) NumEndpoints() int {
