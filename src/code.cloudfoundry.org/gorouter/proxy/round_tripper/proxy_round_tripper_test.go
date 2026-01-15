@@ -274,8 +274,14 @@ var _ = Describe("ProxyRoundTripper", func() {
 				It("logs the error and removes offending backend", func() {
 					res, err := proxyRoundTripper.RoundTrip(req)
 					Expect(err).NotTo(HaveOccurred())
+					routingProps := route.RoutingProperties{
+						LocallyOptimistic: false,
+						GlobalLB:          cfg.LoadBalance,
+						AZ:                AZ,
+						RequestHeaders:    &req.Header,
+					}
 
-					iter := routePool.Endpoints(logger.Logger, "", false, false, AZ, cfg.LoadBalance, &req.Header)
+					iter := routePool.Endpoints(logger.Logger, "", false, routingProps)
 					ep1 := iter.Next(0)
 					ep2 := iter.Next(1)
 					Expect(ep1.PrivateInstanceId).To(Equal(ep2.PrivateInstanceId))
@@ -603,13 +609,20 @@ var _ = Describe("ProxyRoundTripper", func() {
 						PrivateInstanceIndex: "2",
 					})
 
+					routingProps := route.RoutingProperties{
+						LocallyOptimistic: false,
+						GlobalLB:          cfg.LoadBalance,
+						AZ:                AZ,
+						RequestHeaders:    &req.Header,
+					}
+
 					added := routePool.Put(endpoint)
 					Expect(added).To(Equal(route.EndpointAdded))
 
 					_, err := proxyRoundTripper.RoundTrip(req)
 					Expect(err).To(MatchError(ContainSubstring("tls: handshake failure")))
 
-					iter := routePool.Endpoints(logger.Logger, "", false, false, AZ, cfg.LoadBalance, &req.Header)
+					iter := routePool.Endpoints(logger.Logger, "", false, routingProps)
 					ep1 := iter.Next(0)
 					ep2 := iter.Next(1)
 					Expect(ep1).To(Equal(ep2))
@@ -1774,7 +1787,7 @@ var _ = Describe("ProxyRoundTripper", func() {
 					infoLogs := logger.Lines(zap.InfoLevel)
 					count := 0
 					for i := 0; i < len(infoLogs); i++ {
-						if strings.Contains(infoLogs[i], "hash-based-routing-header-not-found") {
+						if strings.Contains(infoLogs[i], "hash-based-routing-header-value-not-found") {
 							count++
 						}
 					}

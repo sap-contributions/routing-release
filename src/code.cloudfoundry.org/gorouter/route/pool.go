@@ -74,6 +74,13 @@ type ProxyRoundTripper interface {
 	CancelRequest(*http.Request)
 }
 
+type RoutingProperties struct {
+	RequestHeaders    *http.Header
+	LocallyOptimistic bool
+	GlobalLB          string
+	AZ                string
+}
+
 type HashRoutingProperties struct {
 	Header        string
 	BalanceFactor float64
@@ -472,17 +479,17 @@ func (p *EndpointPool) removeEndpoint(e *endpointElem) {
 
 }
 
-func (p *EndpointPool) Endpoints(logger *slog.Logger, initial string, mustBeSticky bool, locallyOptimistic bool, az string, globalLB string, header *http.Header) EndpointIterator {
+func (p *EndpointPool) Endpoints(logger *slog.Logger, initial string, mustBeSticky bool, routingProps RoutingProperties) EndpointIterator {
 	// For hash-based routing, validate inputs and get header value
 	if p.LoadBalancingAlgorithm == config.LOAD_BALANCE_HB {
-		headerValue := p.hashBasedInputsValid(header, p.HashRoutingProperties, logger)
+		headerValue := p.hashBasedInputsValid(routingProps.RequestHeaders, p.HashRoutingProperties, logger)
 		if headerValue == "" {
-			return p.createIterator(globalLB, logger, initial, mustBeSticky, locallyOptimistic, az)
+			return p.createIterator(routingProps.GlobalLB, logger, initial, mustBeSticky, routingProps)
 		}
 		return NewHashBased(logger, p, initial, mustBeSticky, headerValue)
 	}
 
-	return p.createIterator(p.LoadBalancingAlgorithm, logger, initial, mustBeSticky, locallyOptimistic, az)
+	return p.createIterator(p.LoadBalancingAlgorithm, logger, initial, mustBeSticky, routingProps)
 }
 
 func (p *EndpointPool) hashBasedInputsValid(header *http.Header, hashProps *HashRoutingProperties, logger *slog.Logger) string {
@@ -492,28 +499,28 @@ func (p *EndpointPool) hashBasedInputsValid(header *http.Header, hashProps *Hash
 	}
 	hashHeader := header.Get(hashProps.Header)
 	if hashHeader == "" {
-		logger.Warn("hash-header-value-not-found",
+		logger.Info("hash-based-routing-header-value-not-found",
 			slog.String("Host", p.host),
 			slog.String("Path", p.contextPath))
 	}
 	return hashHeader
 }
 
-func (p *EndpointPool) createIterator(lbAlgo string, logger *slog.Logger, initial string, mustBeSticky bool, locallyOptimistic bool, az string) EndpointIterator {
+func (p *EndpointPool) createIterator(lbAlgo string, logger *slog.Logger, initial string, mustBeSticky bool, routingProps RoutingProperties) EndpointIterator {
 	switch lbAlgo {
 	case config.LOAD_BALANCE_LC:
 		logger.Debug("endpoint-iterator-with-least-connection-lb-algo")
-		return NewLeastConnection(logger, p, initial, mustBeSticky, locallyOptimistic, az)
+		return NewLeastConnection(logger, p, initial, mustBeSticky, routingProps.LocallyOptimistic, routingProps.AZ)
 	case config.LOAD_BALANCE_RR:
 		logger.Debug("endpoint-iterator-with-round-robin-lb-algo")
-		return NewRoundRobin(logger, p, initial, mustBeSticky, locallyOptimistic, az)
+		return NewRoundRobin(logger, p, initial, mustBeSticky, routingProps.LocallyOptimistic, routingProps.AZ)
 	default:
 		logger.Error("invalid-pool-load-balancing-algorithm",
 			slog.String("poolLBAlgorithm", lbAlgo),
 			slog.String("Host", p.host),
 			slog.String("Path", p.contextPath))
 		logger.Debug("endpoint-iterator-with-round-robin-lb-algo")
-		return NewRoundRobin(logger, p, initial, mustBeSticky, locallyOptimistic, az)
+		return NewRoundRobin(logger, p, initial, mustBeSticky, routingProps.LocallyOptimistic, routingProps.AZ)
 	}
 }
 

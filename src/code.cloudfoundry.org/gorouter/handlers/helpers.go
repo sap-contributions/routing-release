@@ -69,7 +69,13 @@ func EndpointIteratorForRequest(logger *slog.Logger, request *http.Request, stic
 		return nil, fmt.Errorf("could not find reqInfo in context")
 	}
 	stickyEndpointID, mustBeSticky := GetStickySession(request, stickySessionCookieNames, authNegotiateSticky)
-	return reqInfo.RoutePool.Endpoints(logger, stickyEndpointID, mustBeSticky, locallyOptimistic, az, globalLB, &request.Header), nil
+	routingProperties := route.RoutingProperties{
+		RequestHeaders:    &request.Header,
+		LocallyOptimistic: locallyOptimistic,
+		GlobalLB:          globalLB,
+		AZ:                az,
+	}
+	return reqInfo.RoutePool.Endpoints(logger, stickyEndpointID, mustBeSticky, routingProperties), nil
 }
 
 func GetStickySession(request *http.Request, stickySessionCookieNames config.StringSet, authNegotiateSticky bool) (string, bool) {
