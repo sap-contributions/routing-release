@@ -480,33 +480,16 @@ func (p *EndpointPool) removeEndpoint(e *endpointElem) {
 }
 
 func (p *EndpointPool) Endpoints(logger *slog.Logger, initial string, mustBeSticky bool, routingProps RoutingProperties) EndpointIterator {
-	// For hash-based routing, validate inputs and get header value
-	if p.LoadBalancingAlgorithm == config.LOAD_BALANCE_HB {
-		headerValue := p.hashBasedInputsValid(routingProps.RequestHeaders, p.HashRoutingProperties, logger)
-		if headerValue == "" {
-			return p.createIterator(routingProps.GlobalLB, logger, initial, mustBeSticky, routingProps)
+	lbAlgo := p.LoadBalancingAlgorithm
+	// Handle hash-based routing as special case
+	if lbAlgo == config.LOAD_BALANCE_HB {
+		headerValue := p.GetValidHashHeaderValue(routingProps.RequestHeaders, logger)
+		if headerValue != "" {
+			return NewHashBased(logger, p, initial, mustBeSticky, headerValue)
 		}
-		return NewHashBased(logger, p, initial, mustBeSticky, headerValue)
+		lbAlgo = routingProps.GlobalLB
 	}
 
-	return p.createIterator(p.LoadBalancingAlgorithm, logger, initial, mustBeSticky, routingProps)
-}
-
-func (p *EndpointPool) hashBasedInputsValid(header *http.Header, hashProps *HashRoutingProperties, logger *slog.Logger) string {
-	if hashProps == nil || hashProps.Header == "" {
-		logger.Error("hash-routing-properties-missing", slog.String("host", p.Host()))
-		return ""
-	}
-	hashHeader := header.Get(hashProps.Header)
-	if hashHeader == "" {
-		logger.Info("hash-based-routing-header-value-not-found",
-			slog.String("Host", p.host),
-			slog.String("Path", p.contextPath))
-	}
-	return hashHeader
-}
-
-func (p *EndpointPool) createIterator(lbAlgo string, logger *slog.Logger, initial string, mustBeSticky bool, routingProps RoutingProperties) EndpointIterator {
 	switch lbAlgo {
 	case config.LOAD_BALANCE_LC:
 		logger.Debug("endpoint-iterator-with-least-connection-lb-algo")
@@ -522,6 +505,22 @@ func (p *EndpointPool) createIterator(lbAlgo string, logger *slog.Logger, initia
 		logger.Debug("endpoint-iterator-with-round-robin-lb-algo")
 		return NewRoundRobin(logger, p, initial, mustBeSticky, routingProps.LocallyOptimistic, routingProps.AZ)
 	}
+}
+
+func (p *EndpointPool) GetValidHashHeaderValue(header *http.Header, logger *slog.Logger) string {
+	if p.HashRoutingProperties == nil || p.HashRoutingProperties.Header == "" {
+		logger.Error("hash-routing-properties-missing", slog.String("host", p.Host()))
+		return ""
+	}
+
+	hashHeader := header.Get(p.HashRoutingProperties.Header)
+	if hashHeader == "" {
+		logger.Info("hash-based-routing-header-value-not-found",
+			slog.String("Host", p.host),
+			slog.String("Path", p.contextPath))
+		return ""
+	}
+	return hashHeader
 }
 
 func (p *EndpointPool) NumEndpoints() int {
