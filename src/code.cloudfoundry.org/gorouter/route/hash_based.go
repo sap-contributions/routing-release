@@ -49,7 +49,6 @@ func (h *HashBased) Next(attempt int) *Endpoint {
 	defer h.lock.Unlock()
 
 	endpoint := h.pool.FindStickyEndpoint(h.logger, &h.stickyEndpointID, h.mustBeSticky)
-
 	if endpoint != nil {
 		h.lastEndpoint = endpoint
 		return endpoint
@@ -71,34 +70,42 @@ func (h *HashBased) Next(attempt int) *Endpoint {
 		return endpoint
 	}
 
+	// Perform hash-based selection
+	endpoint = h.selectHashBasedEndpoint(attempt)
+	if endpoint != nil {
+		h.lastEndpoint = endpoint
+	}
+	return endpoint
+}
+
+// selectHashBasedEndpoint performs hash-based endpoint selection using the lookup table.
+func (h *HashBased) selectHashBasedEndpoint(attempt int) *Endpoint {
 	if h.pool.HashLookupTable == nil {
 		h.logger.Error("hash-based-routing-failed", slog.String("host", h.pool.host), log.ErrAttr(errors.New("lookup table is empty")))
 		return nil
 	}
 
+	startIndex, err := h.getStartingIndex(attempt)
+	if err != nil {
+		h.logger.Error("hash-based-routing-failed", slog.String("host", h.pool.host), log.ErrAttr(err))
+		return nil
+	}
+
+	return h.findEndpoint(startIndex, attempt)
+}
+
+// getStartingIndex determines the starting index in the lookup table based on the attempt number.
+// For the initial attempt, it uses the hash of the header value.
+// For retries, it uses the next index after the last lookup.
+func (h *HashBased) getStartingIndex(attempt int) (uint64, error) {
 	if attempt == 0 || h.lastLookupTableIndex == 0 {
-		initialLookupTableIndex, _, err := h.pool.HashLookupTable.GetInstanceForHashHeader(h.HeaderValue)
-
-		if err != nil {
-			h.logger.Error(
-				"hash-based-routing-failed",
-				slog.String("host", h.pool.host),
-				log.ErrAttr(err),
-			)
-			return nil
-		}
-
-		endpoint = h.findEndpoint(initialLookupTableIndex, attempt)
-	} else {
-		// On retries, start looking from the next index in the lookup table
-		nextIndex := (h.lastLookupTableIndex + 1) % h.pool.HashLookupTable.GetLookupTableSize()
-		endpoint = h.findEndpoint(nextIndex, attempt)
+		index, _, err := h.pool.HashLookupTable.GetInstanceForHashHeader(h.HeaderValue)
+		return index, err
 	}
 
-	if endpoint != nil {
-		h.lastEndpoint = endpoint
-	}
-	return endpoint
+	// On retries, start from the next index in the lookup table
+	nextIndex := (h.lastLookupTableIndex + 1) % h.pool.HashLookupTable.GetLookupTableSize()
+	return nextIndex, nil
 }
 
 func (h *HashBased) findEndpoint(index uint64, attempt int) *Endpoint {
