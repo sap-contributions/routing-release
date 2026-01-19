@@ -1,7 +1,6 @@
 package route
 
 import (
-	"context"
 	"errors"
 	"log/slog"
 	"sync"
@@ -49,16 +48,18 @@ func (h *HashBased) Next(attempt int) *Endpoint {
 	h.lock.Lock()
 	defer h.lock.Unlock()
 
-	endpoint := h.findEndpointIfStickySession()
-	if endpoint == nil && h.mustBeSticky {
-		return nil
-	}
+	endpoint := h.pool.FindStickyEndpoint(h.logger, &h.stickyEndpointID, h.mustBeSticky)
 
 	if endpoint != nil {
 		h.lastEndpoint = endpoint
 		return endpoint
 	}
 
+	if h.mustBeSticky {
+		return nil
+	}
+
+	// Check for empty pool
 	if len(h.pool.endpoints) == 0 {
 		h.logger.Warn("hash-based-routing-pool-empty", slog.String("host", h.pool.host))
 		return nil
@@ -138,7 +139,7 @@ func (h *HashBased) findEndpoint(index uint64, attempt int) *Endpoint {
 		if endpointElem.isOverloaded() {
 			// If the selected endpoint has reached the limit of max request per backend, log the info about it and try the next one in the lookup table
 			h.logger.Info("hash-based-routing-endpoint-overloaded", slog.String("host", h.pool.host), slog.String("endpoint-id", endpointElem.endpoint.PrivateInstanceId))
-		} else if h.pool.HashRoutingProperties.BalanceFactor <= 0 || !h.IsImbalanced(endpointElem.endpoint) {
+		} else if !h.IsImbalanced(endpointElem.endpoint) {
 			h.lastLookupTableIndex = currentIndex
 			return endpointElem.endpoint
 		}
@@ -151,6 +152,11 @@ func (h *HashBased) findEndpoint(index uint64, attempt int) *Endpoint {
 }
 
 func (h *HashBased) IsImbalanced(endpoint *Endpoint) bool {
+	// endpoint cannot be imbalanced if balance factor is not set
+	if h.pool.HashRoutingProperties.BalanceFactor <= 0 {
+		return false
+	}
+
 	avgNumberOfInFlightRequests := h.CalculateAverageLoad()
 	// Check if avgNumberOfInFlightRequests is 0 to avoid division by 0 in the next if-condition
 	if avgNumberOfInFlightRequests == 0 {
@@ -165,45 +171,6 @@ func (h *HashBased) IsImbalanced(endpoint *Endpoint) bool {
 		return true
 	}
 	return false
-}
-
-// findEndpointIfStickySession checks if there is a sticky session endpoint and returns it if available.
-// If the sticky session endpoint is overloaded, returns nil.
-func (h *HashBased) findEndpointIfStickySession() *Endpoint {
-	var e *endpointElem
-	if h.stickyEndpointID != "" {
-		e = h.pool.findById(h.stickyEndpointID)
-		if e != nil && e.isOverloaded() {
-			if h.mustBeSticky {
-				if h.logger.Enabled(context.Background(), slog.LevelDebug) {
-					h.logger.Debug("endpoint-overloaded-but-request-must-be-sticky", e.endpoint.ToLogData()...)
-				}
-				return nil
-			}
-			e = nil
-		}
-
-		if e == nil && h.mustBeSticky {
-			if h.logger.Enabled(context.Background(), slog.LevelDebug) {
-				h.logger.Debug("endpoint-missing-but-request-must-be-sticky", slog.String("requested-endpoint", h.stickyEndpointID))
-			}
-			return nil
-		}
-
-		if !h.mustBeSticky {
-			if h.logger.Enabled(context.Background(), slog.LevelDebug) {
-				h.logger.Debug("endpoint-missing-choosing-alternate", slog.String("requested-endpoint", h.stickyEndpointID))
-			}
-			h.stickyEndpointID = ""
-		}
-	}
-
-	if e != nil {
-		e.RLock()
-		defer e.RUnlock()
-		return e.endpoint
-	}
-	return nil
 }
 
 // EndpointFailed notifies the endpoint pool that the last selected endpoint has failed.
