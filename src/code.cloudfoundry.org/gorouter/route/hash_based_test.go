@@ -268,13 +268,6 @@ var _ = Describe("HashBased", func() {
 				}
 
 			})
-			It("mark the endpoint as overloaded", func() {
-				for i := 0; i < 500; i++ {
-					iter.PreRequest(e1)
-				}
-				// in general 500 in flight requests counted by e1
-				Expect(iter.IsImbalancedOrOverloaded(e1, true)).To(BeTrue())
-			})
 			It("do not mark as imbalanced if every endpoint has 499 in-flight requests", func() {
 				for i := 0; i < 498; i++ {
 					iter.PreRequest(e1)
@@ -286,25 +279,7 @@ var _ = Describe("HashBased", func() {
 					iter.PreRequest(e3)
 				}
 				// in general 500 in flight requests counted by e1
-				Expect(iter.IsImbalancedOrOverloaded(e1, false)).To(BeFalse())
-			})
-
-			It("mark endpoint as overloaded if every endpoint has 500 in-flight requests", func() {
-				for i := 0; i < 499; i++ {
-					iter.PreRequest(e1)
-				}
-				for i := 0; i < 499; i++ {
-					iter.PreRequest(e2)
-				}
-				for i := 0; i < 499; i++ {
-					iter.PreRequest(e3)
-				}
-				// in general 500 in flight requests counted by e1
-				Expect(iter.IsImbalancedOrOverloaded(e1, true)).To(BeTrue())
-				Eventually(logger).Should(gbytes.Say("hash-based-routing-endpoint-overloaded"))
-				Expect(iter.IsImbalancedOrOverloaded(e2, true)).To(BeTrue())
-				Expect(iter.IsImbalancedOrOverloaded(e3, true)).To(BeTrue())
-
+				Expect(iter.IsImbalanced(e1)).To(BeFalse())
 			})
 			It("mark as imbalanced if it has more in-flight requests", func() {
 				for i := 0; i < 300; i++ {
@@ -316,10 +291,10 @@ var _ = Describe("HashBased", func() {
 				for i := 0; i < 200; i++ {
 					iter.PreRequest(e3)
 				}
-				Expect(iter.IsImbalancedOrOverloaded(e1, false)).To(BeTrue())
+				Expect(iter.IsImbalanced(e1)).To(BeTrue())
 				Eventually(logger).Should(gbytes.Say("hash-based-routing-endpoint-imbalanced"))
-				Expect(iter.IsImbalancedOrOverloaded(e2, false)).To(BeFalse())
-				Expect(iter.IsImbalancedOrOverloaded(e3, false)).To(BeFalse())
+				Expect(iter.IsImbalanced(e2)).To(BeFalse())
+				Expect(iter.IsImbalanced(e3)).To(BeFalse())
 			})
 		})
 	})

@@ -71,7 +71,7 @@ func (h *HashBased) Next(attempt int) *Endpoint {
 	}
 
 	if h.pool.HashLookupTable == nil {
-		h.logger.Error("hash-based-routing-failed", slog.String("host", h.pool.host), log.ErrAttr(errors.New("Lookup table is empty")))
+		h.logger.Error("hash-based-routing-failed", slog.String("host", h.pool.host), log.ErrAttr(errors.New("lookup table is empty")))
 		return nil
 	}
 
@@ -128,14 +128,17 @@ func (h *HashBased) findEndpoint(index uint64, attempt int) *Endpoint {
 
 		endpointElem := h.pool.findById(id)
 		if endpointElem == nil {
-			h.logger.Error("hash-based-routing-failed", slog.String("host", h.pool.host), log.ErrAttr(errors.New("Endpoint not found in pool")), slog.String("endpoint-id", id))
+			h.logger.Error("hash-based-routing-failed", slog.String("host", h.pool.host), log.ErrAttr(errors.New("endpoint not found in pool")), slog.String("endpoint-id", id))
 			currentIndex = (currentIndex + 1) % lookupTableSize
 			continue
 		}
 
 		lastEndpointPrivateId = id
 
-		if h.pool.HashRoutingProperties.BalanceFactor <= 0 || !h.isImbalancedOrOverloaded(endpointElem) {
+		if endpointElem.isOverloaded() {
+			// If the selected endpoint has reached the limit of max request per backend, log the info about it and try the next one in the lookup table
+			h.logger.Info("hash-based-routing-endpoint-overloaded", slog.String("host", h.pool.host), slog.String("endpoint-id", endpointElem.endpoint.PrivateInstanceId))
+		} else if h.pool.HashRoutingProperties.BalanceFactor <= 0 || !h.IsImbalanced(endpointElem.endpoint) {
 			h.lastLookupTableIndex = currentIndex
 			return endpointElem.endpoint
 		}
@@ -143,28 +146,22 @@ func (h *HashBased) findEndpoint(index uint64, attempt int) *Endpoint {
 		currentIndex = (currentIndex + 1) % lookupTableSize
 	}
 	// All endpoints checked and overloaded or not found
-	h.logger.Error("hash-based-routing-failed", slog.String("host", h.pool.host), log.ErrAttr(errors.New("All endpoints are overloaded")))
+	h.logger.Error("hash-based-routing-failed", slog.String("host", h.pool.host), log.ErrAttr(errors.New("all endpoints are overloaded")))
 	return nil
 }
 
-func (h *HashBased) isImbalancedOrOverloaded(e *endpointElem) bool {
-	endpoint := e.endpoint
-	return h.IsImbalancedOrOverloaded(endpoint, e.isOverloaded())
-}
-
-func (h *HashBased) IsImbalancedOrOverloaded(endpoint *Endpoint, isEndpointOverloaded bool) bool {
+func (h *HashBased) IsImbalanced(endpoint *Endpoint) bool {
 	avgNumberOfInFlightRequests := h.CalculateAverageLoad()
+	// Check if avgNumberOfInFlightRequests is 0 to avoid division by 0 in the next if-condition
+	if avgNumberOfInFlightRequests == 0 {
+		return false
+	}
+
 	currentInFlightRequestCount := endpoint.Stats.NumberConnections.Count()
 	balanceFactor := h.pool.HashRoutingProperties.BalanceFactor
 
-	if isEndpointOverloaded {
-		h.logger.Debug("hash-based-routing-endpoint-overloaded", slog.String("host", h.pool.host), slog.String("endpoint-id", endpoint.PrivateInstanceId), slog.Int64("endpoint-connections", currentInFlightRequestCount))
-		return true
-	}
-
-	// Check if avgNumberOfInFlightRequests is 0 to avoid division by 0
-	if avgNumberOfInFlightRequests != 0 && float64(currentInFlightRequestCount)/avgNumberOfInFlightRequests > balanceFactor {
-		h.logger.Debug("hash-based-routing-endpoint-imbalanced", slog.String("host", h.pool.host), slog.String("endpoint-id", endpoint.PrivateInstanceId), slog.Int64("endpoint-connections", endpoint.Stats.NumberConnections.Count()), slog.Float64("average-load", avgNumberOfInFlightRequests))
+	if float64(currentInFlightRequestCount)/avgNumberOfInFlightRequests > balanceFactor {
+		h.logger.Debug("hash-based-routing-endpoint-imbalanced", slog.String("host", h.pool.host), slog.String("endpoint-id", endpoint.PrivateInstanceId), slog.Int64("endpoint-connections", currentInFlightRequestCount), slog.Float64("average-load", avgNumberOfInFlightRequests))
 		return true
 	}
 	return false
@@ -187,12 +184,16 @@ func (h *HashBased) findEndpointIfStickySession() *Endpoint {
 		}
 
 		if e == nil && h.mustBeSticky {
-			h.logger.Debug("endpoint-missing-but-request-must-be-sticky", slog.String("requested-endpoint", h.stickyEndpointID))
+			if h.logger.Enabled(context.Background(), slog.LevelDebug) {
+				h.logger.Debug("endpoint-missing-but-request-must-be-sticky", slog.String("requested-endpoint", h.stickyEndpointID))
+			}
 			return nil
 		}
 
 		if !h.mustBeSticky {
-			h.logger.Debug("endpoint-missing-choosing-alternate", slog.String("requested-endpoint", h.stickyEndpointID))
+			if h.logger.Enabled(context.Background(), slog.LevelDebug) {
+				h.logger.Debug("endpoint-missing-choosing-alternate", slog.String("requested-endpoint", h.stickyEndpointID))
+			}
 			h.stickyEndpointID = ""
 		}
 	}
@@ -230,9 +231,7 @@ func (h *HashBased) CalculateAverageLoad() float64 {
 
 	var currentInFlightRequestCount int64
 	for _, endpointElem := range h.pool.endpoints {
-		endpointElem.RLock()
 		currentInFlightRequestCount += endpointElem.endpoint.Stats.NumberConnections.Count()
-		endpointElem.RUnlock()
 	}
 
 	return float64(currentInFlightRequestCount) / float64(len(h.pool.endpoints))
