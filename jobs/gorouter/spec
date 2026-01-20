@@ -78,7 +78,7 @@ properties:
     description: "Private Key used for the TLS listener of the LB healthcheck endpoint"
   router.enable_envelope_v1_metrics:
       description: "Enables support for metrics reported via Envelope."
-      default: false
+      default: true
   router.prometheus.port:
     description: "Port for the prometheus endpoint. Automatically enables Prometheus support."
   router.prometheus.enable_scraper:
