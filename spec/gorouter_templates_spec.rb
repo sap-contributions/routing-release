@@ -728,8 +728,8 @@ describe 'gorouter' do
 
       describe 'envelope v1 metrics' do
         context 'by default' do
-          it 'should be enabled' do
-            expect(parsed_yaml['enable_envelope_v1_metrics']).to be true
+          it 'should be disabled' do
+            expect(parsed_yaml['enable_envelope_v1_metrics']).to be false
           end
         end
         context 'when disabled in configuration' do
@@ -763,8 +763,8 @@ describe 'gorouter' do
               expect(parsed_yaml['prometheus']['key_path']).to be_nil
               expect(parsed_yaml['prometheus']['ca_path']).to be_nil
             end
-            it 'should enable envelope v1 per default' do
-              expect(parsed_yaml['enable_envelope_v1_metrics']).to be true
+            it 'should disable envelope v1 per default' do
+              expect(parsed_yaml['enable_envelope_v1_metrics']).to be false
             end
           end
           context 'when certificates are configured' do
