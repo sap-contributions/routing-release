@@ -493,17 +493,17 @@ func (p *EndpointPool) Endpoints(logger *slog.Logger, initial string, mustBeStic
 
 	switch lbAlgo {
 	case config.LOAD_BALANCE_LC:
-		logger.Debug("endpoint-iterator-with-least-connection-lb-algo")
+		logDebugIfEnabled(logger, "endpoint-iterator-with-least-connection-lb-algo")
 		return NewLeastConnection(logger, p, initial, mustBeSticky, routingProps.LocallyOptimistic, routingProps.AZ)
 	case config.LOAD_BALANCE_RR:
-		logger.Debug("endpoint-iterator-with-round-robin-lb-algo")
+		logDebugIfEnabled(logger, "endpoint-iterator-with-round-robin-lb-algo")
 		return NewRoundRobin(logger, p, initial, mustBeSticky, routingProps.LocallyOptimistic, routingProps.AZ)
 	default:
 		logger.Error("invalid-pool-load-balancing-algorithm",
 			slog.String("poolLBAlgorithm", lbAlgo),
 			slog.String("Host", p.host),
 			slog.String("Path", p.contextPath))
-		logger.Debug("endpoint-iterator-with-round-robin-lb-algo")
+		logDebugIfEnabled(logger, "endpoint-iterator-with-round-robin-lb-algo")
 		return NewRoundRobin(logger, p, initial, mustBeSticky, routingProps.LocallyOptimistic, routingProps.AZ)
 	}
 }
@@ -542,32 +542,30 @@ func (p *EndpointPool) findById(id string) *endpointElem {
 // If mustBeSticky is false and the endpoint is missing or overloaded, it clears the stickyEndpointID and returns nil.
 // The stickyEndpointID pointer is modified in place when the endpoint is not sticky.
 func (p *EndpointPool) FindStickyEndpoint(logger *slog.Logger, stickyEndpointID *string, mustBeSticky bool) *Endpoint {
-	var e *endpointElem
-	if *stickyEndpointID != "" {
-		e = p.findById(*stickyEndpointID)
-		if e != nil && e.isOverloaded() {
-			if mustBeSticky {
-				if logger.Enabled(context.Background(), slog.LevelDebug) {
-					logger.Debug("endpoint-overloaded-but-request-must-be-sticky", e.endpoint.ToLogData()...)
-				}
-				return nil
-			}
-			e = nil
-		}
+	if *stickyEndpointID == "" {
+		return nil
+	}
 
-		if e == nil && mustBeSticky {
-			if logger.Enabled(context.Background(), slog.LevelDebug) {
-				logger.Debug("endpoint-missing-but-request-must-be-sticky", slog.String("requested-endpoint", *stickyEndpointID))
-			}
+	var e *endpointElem
+	e = p.findById(*stickyEndpointID)
+	if e != nil && e.isOverloaded() {
+		if mustBeSticky {
+			logDebugIfEnabled(logger, "endpoint-overloaded-but-request-must-be-sticky", e.endpoint.ToLogData()...)
 			return nil
 		}
+		e = nil
+	}
 
-		if !mustBeSticky {
-			if logger.Enabled(context.Background(), slog.LevelDebug) {
-				logger.Debug("endpoint-missing-choosing-alternate", slog.String("requested-endpoint", *stickyEndpointID))
-			}
-			*stickyEndpointID = ""
+	if e == nil && mustBeSticky {
+		logDebugIfEnabled(logger, "endpoint-missing-but-request-must-be-sticky", slog.String("requested-endpoint", *stickyEndpointID))
+		return nil
+	}
+
+	if !mustBeSticky {
+		if e == nil {
+			logDebugIfEnabled(logger, "endpoint-missing-choosing-alternate", slog.String("requested-endpoint", *stickyEndpointID))
 		}
+		*stickyEndpointID = ""
 	}
 
 	if e != nil {
@@ -576,6 +574,13 @@ func (p *EndpointPool) FindStickyEndpoint(logger *slog.Logger, stickyEndpointID 
 		return e.endpoint
 	}
 	return nil
+}
+
+// logDebugIfEnabled logs a debug message only if debug level is enabled
+func logDebugIfEnabled(logger *slog.Logger, msg string, args ...any) {
+	if logger.Enabled(context.Background(), slog.LevelDebug) {
+		logger.Debug(msg, args...)
+	}
 }
 
 func (p *EndpointPool) IsEmpty() bool {
@@ -682,7 +687,7 @@ func (p *EndpointPool) setPoolLoadBalancingAlgorithm(endpoint *Endpoint) {
 	if endpoint.LoadBalancingAlgorithm != p.LoadBalancingAlgorithm {
 		if config.IsLoadBalancingAlgorithmValid(endpoint.LoadBalancingAlgorithm) {
 			p.LoadBalancingAlgorithm = endpoint.LoadBalancingAlgorithm
-			p.logger.Debug("setting-pool-load-balancing-algorithm-to-that-of-an-endpoint",
+			logDebugIfEnabled(p.logger, "setting-pool-load-balancing-algorithm-to-that-of-an-endpoint",
 				slog.String("endpointLBAlgorithm", endpoint.LoadBalancingAlgorithm),
 				slog.String("poolLBAlgorithm", p.LoadBalancingAlgorithm))
 
