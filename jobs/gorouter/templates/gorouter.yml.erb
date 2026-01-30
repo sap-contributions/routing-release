@@ -92,10 +92,26 @@ def validate_header_count_limit (limit)
   return limit
 end
 
+def is_prime?(n)
+  return false if n < 2
+  return true if n == 2
+  return false if n.even?
+  (3..Math.sqrt(n).to_i).step(2) do |i|
+    return false if n % i == 0
+  end
+  true
+end
+
 def validate_lookup_table_size(size)
   if size <= 0
     raise "router.hash_based_routing.lookup_table_size must be a positive integer"
   end
+
+  # Warn if not prime (prime numbers provide better hash distribution)
+  if !is_prime?(size)
+    puts "WARNING: router.hash_based_routing.lookup_table_size (#{size}) is not a prime number. Prime numbers provide better hash distribution for the Maglev algorithm."
+  end
+
   return size
 end
 

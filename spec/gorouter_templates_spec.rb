@@ -1031,6 +1031,33 @@ describe 'gorouter' do
               expect { raise parsed_yaml }.to raise_error(RuntimeError, /router.hash_based_routing.lookup_table_size must be a positive integer/)
             end
           end
+
+          context 'when set to a non-prime number' do
+            before do
+              deployment_manifest_fragment['router']['hash_based_routing'] = {
+                'lookup_table_size' => 3000
+              }
+            end
+
+            it 'should accept non-prime numbers with a warning' do
+              # Capture stdout to verify warning is printed
+              expect { parsed_yaml }.to output(/WARNING.*3000.*not a prime number/).to_stdout
+              expect(parsed_yaml['hash_based_routing']['lookup_table_size']).to eq(3000)
+            end
+          end
+
+          context 'when set to a prime number' do
+            before do
+              deployment_manifest_fragment['router']['hash_based_routing'] = {
+                'lookup_table_size' => 3001
+              }
+            end
+
+            it 'should not print a warning for prime numbers' do
+              expect { parsed_yaml }.not_to output(/WARNING/).to_stdout
+              expect(parsed_yaml['hash_based_routing']['lookup_table_size']).to eq(3001)
+            end
+          end
         end
       end
 
