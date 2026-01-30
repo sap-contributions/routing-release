@@ -988,6 +988,52 @@ describe 'gorouter' do
         end
       end
 
+      describe 'hash_based_routing' do
+        context 'lookup_table_size' do
+          context 'as a default' do
+            it 'should set lookup_table_size to 1801' do
+              expect(parsed_yaml['hash_based_routing']['lookup_table_size']).to eq(1801)
+            end
+          end
+
+          context 'when set to a custom value' do
+            before do
+              deployment_manifest_fragment['router']['hash_based_routing'] = {
+                'lookup_table_size' => 3001
+              }
+            end
+
+            it 'should set lookup_table_size to the custom value' do
+              expect(parsed_yaml['hash_based_routing']['lookup_table_size']).to eq(3001)
+            end
+          end
+
+          context 'when set to 0' do
+            before do
+              deployment_manifest_fragment['router']['hash_based_routing'] = {
+                'lookup_table_size' => 0
+              }
+            end
+
+            it 'should error' do
+              expect { raise parsed_yaml }.to raise_error(RuntimeError, /router.hash_based_routing.lookup_table_size must be a positive integer/)
+            end
+          end
+
+          context 'when set to a negative value' do
+            before do
+              deployment_manifest_fragment['router']['hash_based_routing'] = {
+                'lookup_table_size' => -100
+              }
+            end
+
+            it 'should error' do
+              expect { raise parsed_yaml }.to raise_error(RuntimeError, /router.hash_based_routing.lookup_table_size must be a positive integer/)
+            end
+          end
+        end
+      end
+
       context 'certificate authorities' do
         context 'client_ca_certs' do
           context 'are not provided' do

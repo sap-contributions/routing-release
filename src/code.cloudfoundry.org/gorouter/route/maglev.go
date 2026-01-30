@@ -28,11 +28,6 @@ import (
 	"sync"
 )
 
-const (
-	// lookupTableSize is prime number for the size of the maglev lookup table, which should be approximately 100x
-	// the number of expected endpoints
-	lookupTableSize uint64 = 1801
-)
 
 // MaglevLookup defines the interface for consistent hashing lookup table implementations.
 // This interface allows for different implementations of the Maglev algorithm and
@@ -67,6 +62,7 @@ type MaglevLookup interface {
 // Load Balancer" (https://storage.googleapis.com/gweb-research2023-media/pubtools/2904.pdf)
 type Maglev struct {
 	logger           *slog.Logger
+	lookupTableSize  uint64
 	permutationTable [][]uint64
 	lookupTable      []int
 	endpointList     []string
@@ -74,10 +70,11 @@ type Maglev struct {
 }
 
 // NewMaglev initializes an empty maglev lookupTable table
-func NewMaglev(logger *slog.Logger) *Maglev {
+func NewMaglev(logger *slog.Logger, tableSize uint64) *Maglev {
 	return &Maglev{
 		lock:             &sync.RWMutex{},
-		lookupTable:      make([]int, lookupTableSize),
+		lookupTableSize:  tableSize,
+		lookupTable:      make([]int, tableSize),
 		endpointList:     make([]string, 0, 2),
 		permutationTable: make([][]uint64, 0, 2),
 		logger:           logger,
@@ -89,7 +86,7 @@ func (m *Maglev) Add(endpoint string) {
 	m.lock.Lock()
 	defer m.lock.Unlock()
 
-	if lookupTableSize == uint64(len(m.endpointList)) {
+	if m.lookupTableSize == uint64(len(m.endpointList)) {
 		m.logger.Warn("maglev-add-lookuptable-capacity-exceeded", slog.String("endpoint-id", endpoint))
 		return
 	}
@@ -138,8 +135,8 @@ func (m *Maglev) GetInstanceForHashHeader(hashHeaderValue string) (uint64, strin
 		return 0, "", errors.New("no endpoint available")
 	}
 	key := m.hashKey(hashHeaderValue)
-	index := key % lookupTableSize
-	return index, m.endpointList[m.lookupTable[key%lookupTableSize]], nil
+	index := key % m.lookupTableSize
+	return index, m.endpointList[m.lookupTable[key%m.lookupTableSize]], nil
 }
 
 // GetEndpointId by specified lookup table index
@@ -159,12 +156,12 @@ func (m *Maglev) generatePermutation(endpoint string) {
 	}
 
 	endpointHash := m.calculateFNVHash64(endpoint)
-	offset := endpointHash % lookupTableSize
-	skip := (endpointHash % (lookupTableSize - 1)) + 1
+	offset := endpointHash % m.lookupTableSize
+	skip := (endpointHash % (m.lookupTableSize - 1)) + 1
 
-	permutationForEndpoint := make([]uint64, lookupTableSize)
-	for j := uint64(0); j < lookupTableSize; j++ {
-		permutationForEndpoint[j] = (offset + j*skip) % lookupTableSize
+	permutationForEndpoint := make([]uint64, m.lookupTableSize)
+	for j := uint64(0); j < m.lookupTableSize; j++ {
+		permutationForEndpoint[j] = (offset + j*skip) % m.lookupTableSize
 	}
 
 	// insert permutationForEndpoint at position pos, shifting the rest to the right
@@ -181,19 +178,19 @@ func (m *Maglev) fillLookupTable() {
 
 	numberOfEndpoints := len(m.endpointList)
 	next := make([]int, numberOfEndpoints)
-	entry := make([]int, lookupTableSize)
+	entry := make([]int, m.lookupTableSize)
 	for j := range entry {
 		entry[j] = -1
 	}
 
-	for n := uint64(0); n <= lookupTableSize; {
+	for n := uint64(0); n <= m.lookupTableSize; {
 		for i := 0; i < numberOfEndpoints; i++ {
 			candidate := m.findNextAvailableSlot(i, next, entry)
 			entry[candidate] = int(i)
 			next[i] = next[i] + 1
 			n++
 
-			if n == lookupTableSize {
+			if n == m.lookupTableSize {
 				m.lookupTable = entry
 				return
 			}
@@ -244,7 +241,7 @@ func (m *Maglev) GetPermutationTable() [][]uint64 {
 }
 
 func (m *Maglev) GetLookupTableSize() uint64 {
-	return lookupTableSize
+	return m.lookupTableSize
 }
 
 // TODO: Remove in final version

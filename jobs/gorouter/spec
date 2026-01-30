@@ -123,7 +123,7 @@ properties:
     description: |
       Configuration option used in conjunction with the `router.balancing_algorithm` to decide from which
       availability zone to pick a suitable backend. Defaults to "None".
-      "none" - There is no preference regarding availability zones. The router uses the 
+      "none" - There is no preference regarding availability zones. The router uses the
         `router.balancing_algorithm` across all possible backends in all existing AZs.
       "locally-optimistic" - On the initial attempt to pick a backend, the router will use
         `router.balancing_algorithm` across all backends in the same AZ as the router itself. Subsequent
@@ -418,6 +418,12 @@ properties:
   router.backends.max_conns:
     description: "Maximum concurrent TCP connections per backend. When set to 0 there is no limit"
     default: 500
+  router.hash_based_routing.lookup_table_size:
+    description: |
+      Size of the Maglev lookup table used for hash-based load balancing.
+      This should be a prime number approximately 100x the maximum expected number of endpoints.
+      Larger values provide more uniform distribution but consume more memory.
+    default: 1801
   router.tracing.enable_zipkin:
     description: "Enables the addition of the X-B3-Trace-Id header to incoming requests. If the header already exists on the incoming request, it will not be overwritten."
     default: false
@@ -515,12 +521,12 @@ properties:
     default: 900
   http_1_request_timeout_in_seconds:
     description: |
-      The amount of time HTTP/1 requests from the Gorouter to apps are allowed to live before being canceled. 
+      The amount of time HTTP/1 requests from the Gorouter to apps are allowed to live before being canceled.
       Enter value in seconds. Set to -1 to disable timeouts. If set to 0, it inherits the value from request_timeout_in_seconds.
     default: 0
   http_2_request_timeout_in_seconds:
     description: |
-      The amount of time HTTP/2 requests from the Gorouter to apps are allowed to live before being canceled. 
+      The amount of time HTTP/2 requests from the Gorouter to apps are allowed to live before being canceled.
       Enter value in seconds. Set to -1 to disable timeouts. If set to 0, it inherits the value from request_timeout_in_seconds.
     default: 0
   endpoint_dial_timeout_in_seconds:

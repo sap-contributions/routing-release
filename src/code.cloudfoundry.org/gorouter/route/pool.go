@@ -205,12 +205,13 @@ type EndpointPool struct {
 	NextIdx            int
 	maxConnsPerBackend int64
 
-	random                 *rand.Rand
-	logger                 *slog.Logger
-	updatedAt              time.Time
-	LoadBalancingAlgorithm string
-	HashRoutingProperties  *HashRoutingProperties
-	HashLookupTable        MaglevLookup
+	random                   *rand.Rand
+	logger                   *slog.Logger
+	updatedAt                time.Time
+	LoadBalancingAlgorithm   string
+	HashRoutingProperties    *HashRoutingProperties
+	HashLookupTable          MaglevLookup
+	hashLookupTableSize      uint64
 }
 
 type EndpointOpts struct {
@@ -275,6 +276,7 @@ type PoolOpts struct {
 	LoadBalancingAlgorithm string
 	HashHeader             string
 	HashBalanceFactor      float64
+	HashLookupTableSize    uint64
 }
 
 func NewPool(opts *PoolOpts) *EndpointPool {
@@ -290,9 +292,10 @@ func NewPool(opts *PoolOpts) *EndpointPool {
 		logger:                 opts.Logger,
 		updatedAt:              time.Now(),
 		LoadBalancingAlgorithm: opts.LoadBalancingAlgorithm,
+		hashLookupTableSize:    opts.HashLookupTableSize,
 	}
 	if pool.LoadBalancingAlgorithm == config.LOAD_BALANCE_HB {
-		pool.HashLookupTable = NewMaglev(opts.Logger)
+		pool.HashLookupTable = NewMaglev(opts.Logger, opts.HashLookupTableSize)
 		pool.HashRoutingProperties = &HashRoutingProperties{
 			Header:        opts.HashHeader,
 			BalanceFactor: opts.HashBalanceFactor,
@@ -705,7 +708,7 @@ func (p *EndpointPool) prepareHashBasedRouting(endpoint *Endpoint) {
 		return
 	}
 	if p.HashLookupTable == nil {
-		p.HashLookupTable = NewMaglev(p.logger)
+		p.HashLookupTable = NewMaglev(p.logger, p.hashLookupTableSize)
 	}
 
 	newProps := &HashRoutingProperties{

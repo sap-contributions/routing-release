@@ -199,6 +199,10 @@ type RouteServiceConfig struct {
 	EnableWebsockets          bool             `yaml:"enable_websockets"`
 }
 
+type HashBasedRoutingConfig struct {
+	LookupTableSize uint64 `yaml:"lookup_table_size"`
+}
+
 type LoggingConfig struct {
 	Syslog                 string       `yaml:"syslog"`
 	SyslogAddr             string       `yaml:"syslog_addr"`
@@ -477,7 +481,8 @@ type Config struct {
 	Backends                    BackendConfig `yaml:"backends,omitempty"`
 	ExtraHeadersToLog           []string      `yaml:"extra_headers_to_log,omitempty"`
 
-	RouteServiceConfig RouteServiceConfig `yaml:"route_services,omitempty"`
+	RouteServiceConfig RouteServiceConfig       `yaml:"route_services,omitempty"`
+	HashBasedRouting   HashBasedRoutingConfig   `yaml:"hash_based_routing,omitempty"`
 
 	TokenFetcherMaxRetries                    uint32        `yaml:"token_fetcher_max_retries,omitempty"`
 	TokenFetcherRetryInterval                 time.Duration `yaml:"token_fetcher_retry_interval,omitempty"`
@@ -590,6 +595,10 @@ var defaultConfig = Config{
 	// Default load balancer values
 	HealthCheckPollInterval: 10 * time.Second,
 	HealthCheckTimeout:      5 * time.Second,
+
+	HashBasedRouting: HashBasedRoutingConfig{
+		LookupTableSize: 1801,
+	},
 }
 
 func DefaultConfig() (*Config, error) {
