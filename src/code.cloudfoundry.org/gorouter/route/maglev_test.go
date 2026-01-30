@@ -20,7 +20,7 @@ var _ = Describe("Maglev", func() {
 	BeforeEach(func() {
 		logger = test_util.NewTestLogger("test")
 
-		maglev = route.NewMaglev(logger.Logger)
+		maglev = route.NewMaglev(logger.Logger, 1801)
 	})
 
 	Describe("NewMaglev", func() {
