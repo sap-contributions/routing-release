@@ -16,7 +16,6 @@ package route
 // - Extended with getter methods for unit testing
 // - Added error handling and safety checks
 // - Customized for hash-based routing requirements
-// - Optimized memory usage by using smaller integer types (uint16, int16)
 
 import (
 	"errors"
@@ -58,18 +57,18 @@ type MaglevLookup interface {
 	GetEndpointList() []string
 
 	// GetLookupTable returns a copy of the current lookup table (for testing)
-	GetLookupTable() []int16
+	GetLookupTable() []int
 
 	// GetPermutationTable returns a copy of the current permutation table (for testing)
-	GetPermutationTable() [][]uint16
+	GetPermutationTable() [][]uint64
 }
 
 // Maglev implementation of consistent hashing algorithm described in "Maglev: A Fast and Reliable Software Network
 // Load Balancer" (https://storage.googleapis.com/gweb-research2023-media/pubtools/2904.pdf)
 type Maglev struct {
 	logger           *slog.Logger
-	permutationTable [][]uint16 // Changed from [][]uint64 to save 6 bytes per entry (75% reduction)
-	lookupTable      []int16    // Changed from []int to save 6 bytes per entry (75% reduction)
+	permutationTable [][]uint64
+	lookupTable      []int
 	endpointList     []string
 	lock             *sync.RWMutex
 }
@@ -78,9 +77,9 @@ type Maglev struct {
 func NewMaglev(logger *slog.Logger) *Maglev {
 	return &Maglev{
 		lock:             &sync.RWMutex{},
-		lookupTable:      make([]int16, lookupTableSize),
+		lookupTable:      make([]int, lookupTableSize),
 		endpointList:     make([]string, 0, 2),
-		permutationTable: make([][]uint16, 0, 2),
+		permutationTable: make([][]uint64, 0, 2),
 		logger:           logger,
 	}
 }
@@ -163,9 +162,9 @@ func (m *Maglev) generatePermutation(endpoint string) {
 	offset := endpointHash % lookupTableSize
 	skip := (endpointHash % (lookupTableSize - 1)) + 1
 
-	permutationForEndpoint := make([]uint16, lookupTableSize)
+	permutationForEndpoint := make([]uint64, lookupTableSize)
 	for j := uint64(0); j < lookupTableSize; j++ {
-		permutationForEndpoint[j] = uint16((offset + j*skip) % lookupTableSize)
+		permutationForEndpoint[j] = (offset + j*skip) % lookupTableSize
 	}
 
 	// insert permutationForEndpoint at position pos, shifting the rest to the right
@@ -182,7 +181,7 @@ func (m *Maglev) fillLookupTable() {
 
 	numberOfEndpoints := len(m.endpointList)
 	next := make([]int, numberOfEndpoints)
-	entry := make([]int16, lookupTableSize)
+	entry := make([]int, lookupTableSize)
 	for j := range entry {
 		entry[j] = -1
 	}
@@ -190,7 +189,7 @@ func (m *Maglev) fillLookupTable() {
 	for n := uint64(0); n <= lookupTableSize; {
 		for i := 0; i < numberOfEndpoints; i++ {
 			candidate := m.findNextAvailableSlot(i, next, entry)
-			entry[candidate] = int16(i)
+			entry[candidate] = int(i)
 			next[i] = next[i] + 1
 			n++
 
@@ -202,7 +201,7 @@ func (m *Maglev) fillLookupTable() {
 	}
 }
 
-func (m *Maglev) findNextAvailableSlot(i int, next []int, entry []int16) uint16 {
+func (m *Maglev) findNextAvailableSlot(i int, next []int, entry []int) uint64 {
 	candidate := m.permutationTable[i][next[i]]
 	for entry[candidate] >= 0 {
 		next[i]++
@@ -228,18 +227,18 @@ func (m *Maglev) GetEndpointList() []string {
 	return append([]string(nil), m.endpointList...)
 }
 
-func (m *Maglev) GetLookupTable() []int16 {
+func (m *Maglev) GetLookupTable() []int {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
-	return append([]int16(nil), m.lookupTable...)
+	return append([]int(nil), m.lookupTable...)
 }
 
-func (m *Maglev) GetPermutationTable() [][]uint16 {
+func (m *Maglev) GetPermutationTable() [][]uint64 {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
-	copied := make([][]uint16, len(m.permutationTable))
+	copied := make([][]uint64, len(m.permutationTable))
 	for i, v := range m.permutationTable {
-		copied[i] = append([]uint16(nil), v...)
+		copied[i] = append([]uint64(nil), v...)
 	}
 	return copied
 }
@@ -252,7 +251,7 @@ func (m *Maglev) GetLookupTableSize() uint64 {
 func (m *Maglev) PrintLookupTable() string {
 	strArr := make([]string, len(m.lookupTable))
 	for i, value := range m.lookupTable {
-		strArr[i] = strconv.Itoa(int(value))
+		strArr[i] = strconv.Itoa(value)
 	}
 	return fmt.Sprintf("[%s]", strings.Join(strArr, ", "))
 }
