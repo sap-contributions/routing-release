@@ -116,7 +116,7 @@ var _ = Describe("HashBased", func() {
 				e2                *route.Endpoint
 				e3                *route.Endpoint
 				e4                *route.Endpoint
-				MaglevLookupTable = []int{2, 2, 1, 0, 1, 0, 0, 0, 2, 0, 1, 3, 1, 0, 1, 0, 3, 0, 3, 0, 0, 0, 1, 0, 1, 2, 2, 0, 3, 2, 3, 0, 1, 0, 1, 0, 3, 3, 2, 0, 3, 1, 2, 0, 3, 0, 1, 0, 2, 3, 2, 3, 2, 0, 1, 2, 1, 0, 3, 2, 2, 1, 1, 2, 1, 3, 1, 2, 2, 0, 3, 2, 3, 1, 1, 3, 1, 3, 1, 0, 2, 1, 3, 1, 2, 2, 1, 3, 2, 2, 2, 3, 3, 1, 3, 0, 3, 2, 3, 3, 0}
+				MaglevLookupTable = []int16{2, 2, 1, 0, 1, 0, 0, 0, 2, 0, 1, 3, 1, 0, 1, 0, 3, 0, 3, 0, 0, 0, 1, 0, 1, 2, 2, 0, 3, 2, 3, 0, 1, 0, 1, 0, 3, 3, 2, 0, 3, 1, 2, 0, 3, 0, 1, 0, 2, 3, 2, 3, 2, 0, 1, 2, 1, 0, 3, 2, 2, 1, 1, 2, 1, 3, 1, 2, 2, 0, 3, 2, 3, 1, 1, 3, 1, 3, 1, 0, 2, 1, 3, 1, 2, 2, 1, 3, 2, 2, 2, 3, 3, 1, 3, 0, 3, 2, 3, 3, 0}
 			)
 			It("It returns next endpoint from maglev lookup table", func() {
 				e1 = route.NewEndpoint(&route.EndpointOpts{Host: "1.2.3.4", Port: 5678, LoadBalancingAlgorithm: "hash", HashHeaderName: "tenant-id", PrivateInstanceId: "ID1"})
@@ -372,12 +372,12 @@ var _ = Describe("HashBased", func() {
 
 // MockHashLookupTable provides a simple mock implementation of MaglevLookup interface for testing.
 type MockHashLookupTable struct {
-	lookupTable  []int
+	lookupTable  []int16
 	endpointList []string
 }
 
 // NewMockHashLookupTable creates a new mock lookup table with predefined mappings
-func NewMockHashLookupTable(lookupTable []int, endpointList []string) *MockHashLookupTable {
+func NewMockHashLookupTable(lookupTable []int16, endpointList []string) *MockHashLookupTable {
 	return &MockHashLookupTable{
 		lookupTable:  lookupTable,
 		endpointList: endpointList,
@@ -428,12 +428,12 @@ func (m *MockHashLookupTable) GetEndpointList() []string {
 }
 
 // GetLookupTable returns a copy of the current lookup table (for testing)
-func (m *MockHashLookupTable) GetLookupTable() []int {
+func (m *MockHashLookupTable) GetLookupTable() []int16 {
 	return m.lookupTable // return a copy
 }
 
 // GetPermutationTable returns a copy of the current permutation table (for testing)
-func (m *MockHashLookupTable) GetPermutationTable() [][]uint64 {
+func (m *MockHashLookupTable) GetPermutationTable() [][]uint16 {
 	return nil // not implemented in mock
 }
 
