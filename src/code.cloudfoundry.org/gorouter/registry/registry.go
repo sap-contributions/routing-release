@@ -56,7 +56,7 @@ type RouteRegistry struct {
 	isolationSegments        []string
 
 	maxConnsPerBackend  int64
-	hashLookupTableSize uint64
+	hashLookupTableSize string
 
 	EmptyPoolTimeout              time.Duration
 	EmptyPoolResponseCode503      bool

@@ -410,8 +410,13 @@ properties:
     description: |
       Size of the Maglev lookup table used for hash-based load balancing.
       This should be a prime number approximately 100x the maximum expected number of endpoints.
-      Larger values provide more uniform distribution but consume more memory.
-    default: 1801
+      Valid values:
+        - "XS": approx. 10 endpoints in the route pool with hash-based load balancing
+        - "S": approx. 30 endpoints in the route pool with hash-based load balancing
+        - "M": approx 50 endpoints
+        - "L": approx. 100 endpoints
+        - "XL": approx. 650 endpoints
+    default: "S"
   router.tracing.enable_zipkin:
     description: "Enables the addition of the X-B3-Trace-Id header to incoming requests. If the header already exists on the incoming request, it will not be overwritten."
     default: false

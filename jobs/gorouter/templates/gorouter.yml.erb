@@ -93,8 +93,9 @@ def validate_header_count_limit (limit)
 end
 
 def validate_lookup_table_size(size)
-  if size <= 0
-    raise "router.hash_based_routing.lookup_table_size must be a positive integer"
+  valid_sizes = ['XS', 'S', 'M', 'L', 'XL']
+  unless valid_sizes.include?(size)
+    raise "router.hash_based_routing.lookup_table_size must be one of #{valid_sizes.join(', ')}"
   end
   return size
 end

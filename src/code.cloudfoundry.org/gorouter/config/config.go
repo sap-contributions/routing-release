@@ -45,6 +45,7 @@ var (
 	AllowedShardingModes            = []string{SHARD_ALL, SHARD_SEGMENTS, SHARD_SHARED_AND_SEGMENTS}
 	AllowedForwardedClientCertModes = []string{ALWAYS_FORWARD, FORWARD, SANITIZE_SET}
 	AllowedQueryParmRedactionModes  = []string{REDACT_QUERY_PARMS_NONE, REDACT_QUERY_PARMS_ALL, REDACT_QUERY_PARMS_HASH}
+	HashBasedLookupTableSizes       = []string{"XS", "S", "M", "L", "XL"}
 )
 
 type StringSet map[string]struct{}
@@ -179,7 +180,7 @@ type RouteServiceConfig struct {
 }
 
 type HashBasedRoutingConfig struct {
-	LookupTableSize uint64 `yaml:"lookup_table_size"`
+	LookupTableSize string `yaml:"lookup_table_size"`
 }
 
 type LoggingConfig struct {
@@ -575,7 +576,7 @@ var defaultConfig = Config{
 	HealthCheckTimeout:      5 * time.Second,
 
 	HashBasedRouting: HashBasedRoutingConfig{
-		LookupTableSize: 1801,
+		LookupTableSize: "S",
 	},
 }
 
@@ -590,6 +591,10 @@ func IsGlobalLoadBalancingAlgorithmValid(lbAlgo string) bool {
 
 func IsLoadBalancingAlgorithmValid(lbAlgo string) bool {
 	return slices.Contains(LoadBalancingStrategies, lbAlgo)
+}
+
+func IsHashBasedLookupTableSizeValid(size string) bool {
+	return len(size) == 0 || slices.Contains(HashBasedLookupTableSizes, size)
 }
 
 func (c *Config) Process() error {
@@ -802,6 +807,10 @@ func (c *Config) Process() error {
 	}
 	if !validQueryParamRedaction {
 		return fmt.Errorf("Invalid query param redaction mode: %s. Allowed values are %s", c.Logging.RedactQueryParams, AllowedQueryParmRedactionModes)
+	}
+
+	if !IsHashBasedLookupTableSizeValid(c.HashBasedRouting.LookupTableSize) {
+		return fmt.Errorf("Invalid size of lookup table for hash-based routing %s. Allowed values are %s", c.HashBasedRouting.LookupTableSize, HashBasedLookupTableSizes)
 	}
 
 	if err := c.buildCertPool(); err != nil {

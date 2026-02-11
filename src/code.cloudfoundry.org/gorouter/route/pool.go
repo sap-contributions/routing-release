@@ -211,7 +211,7 @@ type EndpointPool struct {
 	LoadBalancingAlgorithm string
 	HashRoutingProperties  *HashRoutingProperties
 	HashLookupTable        MaglevLookup
-	hashLookupTableSize    uint64
+	hashLookupTableSize    string
 }
 
 type EndpointOpts struct {
@@ -276,7 +276,7 @@ type PoolOpts struct {
 	LoadBalancingAlgorithm string
 	HashHeader             string
 	HashBalanceFactor      float64
-	HashLookupTableSize    uint64
+	HashLookupTableSize    string
 }
 
 func NewPool(opts *PoolOpts) *EndpointPool {

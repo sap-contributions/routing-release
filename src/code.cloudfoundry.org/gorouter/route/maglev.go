@@ -26,6 +26,14 @@ import (
 	"sync"
 )
 
+var lookupTableSizeNames = map[string]uint64{
+	"XS": 1009,
+	"S":  3001,
+	"M":  5003,
+	"L":  10007,
+	"XL": 65537,
+}
+
 // permutationParams stores the parameters needed to compute permutation values on-the-fly
 type permutationParams struct {
 	offset uint64
@@ -73,11 +81,16 @@ type Maglev struct {
 }
 
 // NewMaglev initializes an empty maglev lookupTable table
-func NewMaglev(logger *slog.Logger, tableSize uint64) *Maglev {
+func NewMaglev(logger *slog.Logger, lookupTableSizeName string) *Maglev {
+	lookupTableSize, exists := lookupTableSizeNames[lookupTableSizeName]
+	if !exists {
+		lookupTableSize = lookupTableSizeNames["S"] // default to "S" if invalid name is provided
+		logger.Warn("Invalid name of lookup table size, defaulted to S", slog.String("size-name", lookupTableSizeName))
+	}
 	return &Maglev{
 		lock:            &sync.RWMutex{},
-		lookupTableSize: tableSize,
-		lookupTable:     make([]int16, tableSize),
+		lookupTableSize: lookupTableSize,
+		lookupTable:     make([]int16, lookupTableSize),
 		endpointList:    make([]string, 0, 2),
 		permutations:    make([]permutationParams, 0, 2),
 		logger:          logger,
