@@ -141,8 +141,6 @@ func (h *HashBased) findEndpoint(index uint64, attempt int) *Endpoint {
 			continue
 		}
 
-		lastEndpointPrivateId = id
-
 		if endpointElem.isOverloaded() {
 			// If the selected endpoint has reached the limit of max request per backend, log the info about it and try the next one in the lookup table
 			h.logger.Info("hash-based-routing-endpoint-overloaded", slog.String("host", h.pool.host), slog.String("endpoint-id", endpointElem.endpoint.PrivateInstanceId))

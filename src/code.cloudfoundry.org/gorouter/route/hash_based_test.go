@@ -159,7 +159,6 @@ var _ = Describe("HashBased", func() {
 					// Simulate requests to overload the endpoints
 					iter.PreRequest(e1)
 					iter.PreRequest(e2)
-					iter.PreRequest(e4)
 				}
 				secondAttemptResult := iter.Next(1)
 				Expect(secondAttemptResult).NotTo(Equal(firstAttemptResult))
