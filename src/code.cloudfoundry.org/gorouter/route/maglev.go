@@ -87,7 +87,9 @@ func NewMaglev(logger *slog.Logger, lookupTableSizeName string) *Maglev {
 		lookupTableSize = lookupTableSizeNames["S"] // default to "S" if invalid name is provided
 		logger.Warn("Invalid name of lookup table size, defaulted to S", slog.String("size-name", lookupTableSizeName))
 	}
-	logger.Info("maglev-initialized", slog.Uint64("lookup-table-size", lookupTableSize))
+	if logger.Enabled(context.Background(), slog.LevelDebug) {
+		logger.Debug("maglev-initialized", slog.Uint64("lookup-table-size", lookupTableSize))
+	}
 	return &Maglev{
 		lock:            &sync.RWMutex{},
 		lookupTableSize: lookupTableSize,
@@ -139,7 +141,10 @@ func (m *Maglev) Remove(endpoint string) {
 	m.endpointList = append(m.endpointList[:index], m.endpointList[index+1:]...)
 	m.permutations = append(m.permutations[:index], m.permutations[index+1:]...)
 
-	m.logger.Info("maglev-remove-endpoint", slog.String("endpoint-id", endpoint), slog.Int("current-endpoints", len(m.endpointList)))
+	if m.logger.Enabled(context.Background(), slog.LevelDebug) {
+		m.logger.Debug("maglev-remove-endpoint", slog.String("endpoint-id", endpoint), slog.Int("current-endpoints", len(m.endpointList)))
+	}
+
 	m.fillLookupTable()
 }
 
