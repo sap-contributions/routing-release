@@ -87,6 +87,7 @@ func NewMaglev(logger *slog.Logger, lookupTableSizeName string) *Maglev {
 		lookupTableSize = lookupTableSizeNames["S"] // default to "S" if invalid name is provided
 		logger.Warn("Invalid name of lookup table size, defaulted to S", slog.String("size-name", lookupTableSizeName))
 	}
+	logger.Info("maglev-initialized", slog.Uint64("lookup-table-size", lookupTableSize))
 	return &Maglev{
 		lock:            &sync.RWMutex{},
 		lookupTableSize: lookupTableSize,
@@ -138,11 +139,8 @@ func (m *Maglev) Remove(endpoint string) {
 	m.endpointList = append(m.endpointList[:index], m.endpointList[index+1:]...)
 	m.permutations = append(m.permutations[:index], m.permutations[index+1:]...)
 
+	m.logger.Info("maglev-remove-endpoint", slog.String("endpoint-id", endpoint), slog.Int("current-endpoints", len(m.endpointList)))
 	m.fillLookupTable()
-}
-
-func (m *Maglev) hashKey(headerValue string) uint64 {
-	return m.calculateFNVHash64(headerValue)
 }
 
 // GetInstanceForHashHeader lookup table index and private instance ID for the specified request header value
@@ -153,7 +151,7 @@ func (m *Maglev) GetInstanceForHashHeader(hashHeaderValue string) (uint64, strin
 	if len(m.endpointList) == 0 {
 		return 0, "", errors.New("no endpoint available")
 	}
-	key := m.hashKey(hashHeaderValue)
+	key := m.calculateFNVHash64(hashHeaderValue)
 	index := key % m.lookupTableSize
 	return index, m.endpointList[m.lookupTable[key%m.lookupTableSize]], nil
 }

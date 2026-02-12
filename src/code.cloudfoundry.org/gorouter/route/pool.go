@@ -708,7 +708,8 @@ func (p *EndpointPool) prepareHashBasedRouting(endpoint *Endpoint) {
 		return
 	}
 	if p.HashLookupTable == nil {
-		p.HashLookupTable = NewMaglev(p.logger, p.hashLookupTableSize)
+		logger := p.logger.With(slog.String("host", p.Host()))
+		p.HashLookupTable = NewMaglev(logger, p.hashLookupTableSize)
 	}
 
 	newProps := &HashRoutingProperties{
