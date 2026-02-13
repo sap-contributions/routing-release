@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"code.cloudfoundry.org/gorouter/config"
+	"code.cloudfoundry.org/gorouter/handlers"
 	"code.cloudfoundry.org/gorouter/proxy/fails"
 	"code.cloudfoundry.org/routing-api/models"
 )
@@ -487,9 +488,10 @@ func (p *EndpointPool) Endpoints(logger *slog.Logger, initial string, mustBeStic
 	lbAlgo := p.LoadBalancingAlgorithm
 	// Handle hash-based routing as special case
 	if lbAlgo == config.LOAD_BALANCE_HB {
-		headerValue := p.GetValidHashHeaderValue(routingProps.RequestHeaders, logger)
+		hbLogger := logger.With(slog.String("vcap_request_id", routingProps.RequestHeaders.Get(handlers.VcapRequestIdHeader)))
+		headerValue := p.GetValidHashHeaderValue(routingProps.RequestHeaders, hbLogger)
 		if headerValue != "" {
-			return NewHashBased(logger, p, initial, mustBeSticky, headerValue)
+			return NewHashBased(hbLogger, p, initial, mustBeSticky, headerValue)
 		}
 		lbAlgo = routingProps.GlobalLB
 	}
@@ -521,7 +523,8 @@ func (p *EndpointPool) GetValidHashHeaderValue(header *http.Header, logger *slog
 	if hashHeader == "" {
 		logger.Info("hash-based-routing-header-value-not-found",
 			slog.String("Host", p.host),
-			slog.String("Path", p.contextPath))
+			slog.String("Path", p.contextPath),
+		)
 		return ""
 	}
 	return hashHeader
