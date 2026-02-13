@@ -33,7 +33,7 @@ var lookupTableSizeNames = map[string]uint64{
 	"S":  3001,
 	"M":  5003,
 	"L":  10007,
-	"XL": 65537, // this size requires at least int32
+	"XL": 32003, // this size requires at least int16
 }
 
 // permutationParams stores the parameters needed to compute permutation values on-the-fly
@@ -65,10 +65,10 @@ type MaglevLookup interface {
 	GetEndpointList() []string
 
 	// GetLookupTable returns a copy of the current lookup table (for testing)
-	GetLookupTable() []int32
+	GetLookupTable() []int16
 
 	// GetPermutationTable returns a copy of the current permutation table (for testing)
-	GetPermutationTable() [][]uint32
+	GetPermutationTable() [][]uint16
 }
 
 // Maglev implementation of consistent hashing algorithm described in "Maglev: A Fast and Reliable Software Network
@@ -77,7 +77,7 @@ type Maglev struct {
 	logger          *slog.Logger
 	lookupTableSize uint64
 	permutations    []permutationParams // Stores offset and skip for computing permutations on-the-fly
-	lookupTable     []int32
+	lookupTable     []int16
 	endpointList    []string
 	lock            *sync.RWMutex
 }
@@ -95,7 +95,7 @@ func NewMaglev(logger *slog.Logger, lookupTableSizeName string) *Maglev {
 	return &Maglev{
 		lock:            &sync.RWMutex{},
 		lookupTableSize: lookupTableSize,
-		lookupTable:     make([]int32, lookupTableSize),
+		lookupTable:     make([]int16, lookupTableSize),
 		endpointList:    make([]string, 0, 2),
 		permutations:    make([]permutationParams, 0, 2),
 		logger:          logger,
@@ -192,9 +192,9 @@ func (m *Maglev) generatePermutation(endpoint string) {
 }
 
 // computePermutation calculates the permutation value for endpoint i at position j on-the-fly
-func (m *Maglev) computePermutation(i int, j int) uint32 {
+func (m *Maglev) computePermutation(i int, j int) uint16 {
 	params := m.permutations[i]
-	return uint32((params.offset + uint64(j)*params.skip) % m.lookupTableSize)
+	return uint16((params.offset + uint64(j)*params.skip) % m.lookupTableSize)
 }
 
 func (m *Maglev) fillLookupTable() {
@@ -204,7 +204,7 @@ func (m *Maglev) fillLookupTable() {
 
 	numberOfEndpoints := len(m.endpointList)
 	next := make([]int, numberOfEndpoints)
-	entry := make([]int32, m.lookupTableSize)
+	entry := make([]int16, m.lookupTableSize)
 	for j := range entry {
 		entry[j] = -1
 	}
@@ -212,7 +212,7 @@ func (m *Maglev) fillLookupTable() {
 	for n := uint64(0); n <= m.lookupTableSize; {
 		for i := 0; i < numberOfEndpoints; i++ {
 			candidate := m.findNextAvailableSlot(i, next, entry)
-			entry[candidate] = int32(i)
+			entry[candidate] = int16(i)
 			next[i] = next[i] + 1
 			n++
 
@@ -224,7 +224,7 @@ func (m *Maglev) fillLookupTable() {
 	}
 }
 
-func (m *Maglev) findNextAvailableSlot(i int, next []int, entry []int32) uint32 {
+func (m *Maglev) findNextAvailableSlot(i int, next []int, entry []int16) uint16 {
 	candidate := m.computePermutation(i, next[i])
 	for entry[candidate] >= 0 {
 		next[i]++
@@ -250,20 +250,20 @@ func (m *Maglev) GetEndpointList() []string {
 	return append([]string(nil), m.endpointList...)
 }
 
-func (m *Maglev) GetLookupTable() []int32 {
+func (m *Maglev) GetLookupTable() []int16 {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
-	return append([]int32(nil), m.lookupTable...)
+	return append([]int16(nil), m.lookupTable...)
 }
 
-func (m *Maglev) GetPermutationTable() [][]uint32 {
+func (m *Maglev) GetPermutationTable() [][]uint16 {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
 
 	// Compute permutation table on-the-fly for testing
-	copied := make([][]uint32, len(m.permutations))
+	copied := make([][]uint16, len(m.permutations))
 	for i := range m.permutations {
-		copied[i] = make([]uint32, m.lookupTableSize)
+		copied[i] = make([]uint16, m.lookupTableSize)
 		for j := uint64(0); j < m.lookupTableSize; j++ {
 			copied[i][j] = m.computePermutation(i, int(j))
 		}

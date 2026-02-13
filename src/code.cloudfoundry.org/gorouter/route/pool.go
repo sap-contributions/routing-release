@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"code.cloudfoundry.org/gorouter/config"
-	"code.cloudfoundry.org/gorouter/handlers"
 	"code.cloudfoundry.org/gorouter/proxy/fails"
 	"code.cloudfoundry.org/routing-api/models"
 )
@@ -488,10 +487,10 @@ func (p *EndpointPool) Endpoints(logger *slog.Logger, initial string, mustBeStic
 	lbAlgo := p.LoadBalancingAlgorithm
 	// Handle hash-based routing as special case
 	if lbAlgo == config.LOAD_BALANCE_HB {
-		hbLogger := logger.With(slog.String("vcap_request_id", routingProps.RequestHeaders.Get(handlers.VcapRequestIdHeader)))
-		headerValue := p.GetValidHashHeaderValue(routingProps.RequestHeaders, hbLogger)
+		// TODO: add VCAP-ID to logs after extracting handlers.VcapRequestIdHeader to new package "constants" (to avoid cyclic imports)
+		headerValue := p.GetValidHashHeaderValue(routingProps.RequestHeaders, logger)
 		if headerValue != "" {
-			return NewHashBased(hbLogger, p, initial, mustBeSticky, headerValue)
+			return NewHashBased(logger, p, initial, mustBeSticky, headerValue)
 		}
 		lbAlgo = routingProps.GlobalLB
 	}
