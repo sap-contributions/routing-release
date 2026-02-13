@@ -26,12 +26,14 @@ import (
 	"sync"
 )
 
+// Int subtype of lookup table (int16/int32/int64) limits the maximum possible size.
+// Remember to adapt type of lookupTable and permutation properties if you want to use larger sizes.
 var lookupTableSizeNames = map[string]uint64{
 	"XS": 1009,
 	"S":  3001,
 	"M":  5003,
 	"L":  10007,
-	"XL": 65537,
+	"XL": 65537, // this size requires at least int32
 }
 
 // permutationParams stores the parameters needed to compute permutation values on-the-fly
@@ -63,10 +65,10 @@ type MaglevLookup interface {
 	GetEndpointList() []string
 
 	// GetLookupTable returns a copy of the current lookup table (for testing)
-	GetLookupTable() []int16
+	GetLookupTable() []int32
 
 	// GetPermutationTable returns a copy of the current permutation table (for testing)
-	GetPermutationTable() [][]uint16
+	GetPermutationTable() [][]uint32
 }
 
 // Maglev implementation of consistent hashing algorithm described in "Maglev: A Fast and Reliable Software Network
@@ -75,7 +77,7 @@ type Maglev struct {
 	logger          *slog.Logger
 	lookupTableSize uint64
 	permutations    []permutationParams // Stores offset and skip for computing permutations on-the-fly
-	lookupTable     []int16
+	lookupTable     []int32
 	endpointList    []string
 	lock            *sync.RWMutex
 }
@@ -93,7 +95,7 @@ func NewMaglev(logger *slog.Logger, lookupTableSizeName string) *Maglev {
 	return &Maglev{
 		lock:            &sync.RWMutex{},
 		lookupTableSize: lookupTableSize,
-		lookupTable:     make([]int16, lookupTableSize),
+		lookupTable:     make([]int32, lookupTableSize),
 		endpointList:    make([]string, 0, 2),
 		permutations:    make([]permutationParams, 0, 2),
 		logger:          logger,
@@ -190,9 +192,9 @@ func (m *Maglev) generatePermutation(endpoint string) {
 }
 
 // computePermutation calculates the permutation value for endpoint i at position j on-the-fly
-func (m *Maglev) computePermutation(i int, j int) uint16 {
+func (m *Maglev) computePermutation(i int, j int) uint32 {
 	params := m.permutations[i]
-	return uint16((params.offset + uint64(j)*params.skip) % m.lookupTableSize)
+	return uint32((params.offset + uint64(j)*params.skip) % m.lookupTableSize)
 }
 
 func (m *Maglev) fillLookupTable() {
@@ -202,7 +204,7 @@ func (m *Maglev) fillLookupTable() {
 
 	numberOfEndpoints := len(m.endpointList)
 	next := make([]int, numberOfEndpoints)
-	entry := make([]int16, m.lookupTableSize)
+	entry := make([]int32, m.lookupTableSize)
 	for j := range entry {
 		entry[j] = -1
 	}
@@ -210,7 +212,7 @@ func (m *Maglev) fillLookupTable() {
 	for n := uint64(0); n <= m.lookupTableSize; {
 		for i := 0; i < numberOfEndpoints; i++ {
 			candidate := m.findNextAvailableSlot(i, next, entry)
-			entry[candidate] = int16(i)
+			entry[candidate] = int32(i)
 			next[i] = next[i] + 1
 			n++
 
@@ -222,7 +224,7 @@ func (m *Maglev) fillLookupTable() {
 	}
 }
 
-func (m *Maglev) findNextAvailableSlot(i int, next []int, entry []int16) uint16 {
+func (m *Maglev) findNextAvailableSlot(i int, next []int, entry []int32) uint32 {
 	candidate := m.computePermutation(i, next[i])
 	for entry[candidate] >= 0 {
 		next[i]++
@@ -241,27 +243,27 @@ func (m *Maglev) findNextAvailableSlot(i int, next []int, entry []int16) uint16 
 	return candidate
 }
 
-// Getters for unit tests
+// GetEndpointList is used in unit tests
 func (m *Maglev) GetEndpointList() []string {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
 	return append([]string(nil), m.endpointList...)
 }
 
-func (m *Maglev) GetLookupTable() []int16 {
+func (m *Maglev) GetLookupTable() []int32 {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
-	return append([]int16(nil), m.lookupTable...)
+	return append([]int32(nil), m.lookupTable...)
 }
 
-func (m *Maglev) GetPermutationTable() [][]uint16 {
+func (m *Maglev) GetPermutationTable() [][]uint32 {
 	m.lock.RLock()
 	defer m.lock.RUnlock()
 
 	// Compute permutation table on-the-fly for testing
-	copied := make([][]uint16, len(m.permutations))
+	copied := make([][]uint32, len(m.permutations))
 	for i := range m.permutations {
-		copied[i] = make([]uint16, m.lookupTableSize)
+		copied[i] = make([]uint32, m.lookupTableSize)
 		for j := uint64(0); j < m.lookupTableSize; j++ {
 			copied[i][j] = m.computePermutation(i, int(j))
 		}

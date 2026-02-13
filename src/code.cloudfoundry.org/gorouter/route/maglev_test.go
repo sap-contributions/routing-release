@@ -86,6 +86,24 @@ var _ = Describe("Maglev", func() {
 				Expect(backends["backend3"]).To(BeTrue())
 			})
 		})
+
+		Context("when lookup table is extra large", func() {
+			BeforeEach(func() {
+				maglev = route.NewMaglev(logger.Logger, "XL")
+			})
+			It("should add the backend successfully", func() {
+				maglev.Add("backend1")
+
+				Expect(maglev.GetEndpointList()).To(HaveLen(1))
+				Expect(maglev.GetLookupTable()).To(HaveLen(int(maglev.GetLookupTableSize())))
+				Expect(maglev.GetPermutationTable()).To(HaveLen(1))
+				Expect(maglev.GetPermutationTable()[0]).To(HaveLen(int(maglev.GetLookupTableSize())))
+
+				_, backend, err := maglev.GetInstanceForHashHeader("test-key")
+				Expect(err).NotTo(HaveOccurred())
+				Expect(backend).To(Equal("backend1"))
+			})
+		})
 	})
 
 	Describe("Remove", func() {
