@@ -810,7 +810,7 @@ func (c *Config) Process() error {
 	}
 
 	if !IsHashBasedLookupTableSizeValid(c.HashBasedRouting.LookupTableSize) {
-		return fmt.Errorf("Invalid size of lookup table for hash-based routing %s. Allowed values are %s", c.HashBasedRouting.LookupTableSize, HashBasedLookupTableSizes)
+		return fmt.Errorf("Invalid size %s of lookup table for hash-based routing. Allowed values are %s", c.HashBasedRouting.LookupTableSize, HashBasedLookupTableSizes)
 	}
 
 	if err := c.buildCertPool(); err != nil {

@@ -33,7 +33,7 @@ var lookupTableSizeNames = map[string]uint64{
 	"S":  3001,
 	"M":  5003,
 	"L":  10007,
-	"XL": 32003, // this size requires at least int16
+	"XL": 32003, // this size requires at least int16 for values in `lookupTable`.
 }
 
 // permutationParams stores the parameters needed to compute permutation values on-the-fly
