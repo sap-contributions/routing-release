@@ -47,6 +47,7 @@ type MetricReporter interface {
 	CaptureNATSBufferedMessages(messages int)
 	CaptureNATSDroppedMessages(messages int)
 	UnmuzzleRouteRegistrationLatency()
+	CaptureEndpointsPerPool(endpoints int, route string, lbAlgo string)
 }
 
 type ComponentTagged interface {
@@ -230,6 +231,12 @@ func (m MultiMetricReporter) CaptureNATSDroppedMessages(messages int) {
 	}
 }
 
+func (m MultiMetricReporter) CaptureEndpointsPerPool(endpoints int, route string, lbAlgo string) {
+	for _, r := range m {
+		r.CaptureEndpointsPerPool(endpoints, route, lbAlgo)
+	}
+}
+
 func (c *CompositeReporter) CaptureBadRequest() {
 	c.VarzReporter.CaptureBadRequest()
 	c.MetricReporter.CaptureBadRequest()
@@ -256,4 +263,8 @@ func (c *CompositeReporter) CaptureRoutingResponseLatency(b *route.Endpoint, sta
 
 func (c *CompositeReporter) CaptureHTTPLatency(d time.Duration, sourceID string) {
 	c.MetricReporter.CaptureHTTPLatency(d, sourceID)
+}
+
+func (c *CompositeReporter) CaptureEndpointsPerPool(endpoints int, route string, lbAlgo string) {
+	c.MetricReporter.CaptureEndpointsPerPool(endpoints, route, lbAlgo)
 }

@@ -43,6 +43,7 @@ type Metrics struct {
 	NATSDroppedMessages         mr.Gauge
 	HTTPLatency                 mr.GaugeVec
 	perRequestMetricsReporting  bool
+	EndpointsPerPool            mr.GaugeVec
 }
 
 func NewMetricsRegistry(config config.PrometheusConfig) *mr.Registry {
@@ -91,6 +92,7 @@ func NewMetrics(registry *mr.Registry, perRequestMetricsReporting bool) *Metrics
 		NATSDroppedMessages:         registry.NewGauge("total_dropped_messages", "number of total dropped messages in NATS"),
 		HTTPLatency:                 registry.NewGaugeVec("http_latency_seconds", "the latency of http requests from gorouter and back in sec", []string{"source_id"}),
 		perRequestMetricsReporting:  perRequestMetricsReporting,
+		EndpointsPerPool:            registry.NewGaugeVec("endpoints", "number of endpoints per pool", []string{"route", "LB_algorithm"}),
 	}
 }
 
@@ -218,6 +220,11 @@ func (metrics *Metrics) CaptureNATSDroppedMessages(messages int) {
 
 func (metrics *Metrics) CaptureHTTPLatency(d time.Duration, sourceID string) {
 	metrics.HTTPLatency.Set(float64(d)/float64(time.Second), []string{sourceID})
+}
+
+// CaptureEndpoints sets the number of endpoints for a given route and load balancing algorithm
+func (metrics *Metrics) CaptureEndpointsPerPool(count int, route string, loadBalancingAlgo string) {
+	metrics.EndpointsPerPool.Set(float64(count), []string{route, loadBalancingAlgo})
 }
 
 func statusGroupName(statusCode int) string {

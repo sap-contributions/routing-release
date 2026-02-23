@@ -450,6 +450,39 @@ var _ = Describe("Metrics", func() {
 			Expect(getMetrics(r.Port())).To(ContainSubstring("http_latency_seconds{source_id=\"some-source\"} 0.63"))
 		})
 	})
+
+	Context("endpoints metric", func() {
+		BeforeEach(func() {
+			var config = config.PrometheusConfig{Port: 0}
+			r = NewMetricsRegistry(config)
+			m = NewMetrics(r, true)
+		})
+
+		It("reports the number of endpoints per pool with correct labels", func() {
+			m.CaptureEndpointsPerPool(5, "routeA", "round_robin")
+			metricsOutput := getMetrics(r.Port())
+			expected := "endpoints{LB_algorithm=\"round_robin\",route=\"routeA\"} 5"
+			Expect(metricsOutput).To(ContainSubstring(expected))
+		})
+
+		It("updates the value for the same label combination", func() {
+			m.CaptureEndpointsPerPool(5, "routeA", "round_robin")
+			m.CaptureEndpointsPerPool(7, "routeA", "round_robin")
+			metricsOutput := getMetrics(r.Port())
+			expected := "endpoints{LB_algorithm=\"round_robin\",route=\"routeA\"} 7"
+			Expect(metricsOutput).To(ContainSubstring(expected))
+		})
+
+		It("reports multiple values for different label combinations", func() {
+			m.CaptureEndpointsPerPool(5, "routeA", "round_robin")
+			m.CaptureEndpointsPerPool(3, "routeB", "least_conn")
+			metricsOutput := getMetrics(r.Port())
+			expectedA := "endpoints{LB_algorithm=\"round_robin\",route=\"routeA\"} 5"
+			expectedB := "endpoints{LB_algorithm=\"least_conn\",route=\"routeB\"} 3"
+			Expect(metricsOutput).To(ContainSubstring(expectedA))
+			Expect(metricsOutput).To(ContainSubstring(expectedB))
+		})
+	})
 })
 
 func getMetrics(port string) string {

@@ -106,14 +106,17 @@ func (r *RouteRegistry) Register(uri route.Uri, endpoint *route.Endpoint) {
 	}
 
 	switch poolPutResult {
+
 	case route.EndpointAdded:
 		if r.logger.Enabled(context.Background(), slog.LevelInfo) {
 			r.logger.Info("endpoint-registered", buildSlogAttrs(uri, endpoint)...)
 		}
+		r.reportEndpointsPerPool(uri, endpoint)
 	case route.EndpointUpdated:
 		if r.logger.Enabled(context.Background(), slog.LevelInfo) {
 			r.logger.Info("endpoint-registered", buildSlogAttrs(uri, endpoint)...)
 		}
+		r.reportEndpointsPerPool(uri, endpoint)
 	case route.EndpointUnmodified:
 		if r.logger.Enabled(context.Background(), slog.LevelDebug) {
 			r.logger.Debug("endpoint-not-registered", buildSlogAttrs(uri, endpoint)...)
@@ -189,6 +192,7 @@ func (r *RouteRegistry) Unregister(uri route.Uri, endpoint *route.Endpoint) {
 
 	if endpointRemoved {
 		r.logger.Info("endpoint-unregistered", buildSlogAttrs(uri, endpoint)...)
+		r.reportEndpointsPerPool(uri, endpoint)
 	} else {
 		if r.logger.Enabled(context.Background(), slog.LevelDebug) {
 			r.logger.Debug("endpoint-not-unregistered", buildSlogAttrs(uri, endpoint)...)
@@ -464,6 +468,13 @@ func (r *RouteRegistry) freshenRoutes() {
 	r.byURI.EachNodeWithPool(func(t *container.Trie) {
 		t.Pool.MarkUpdated(now)
 	})
+}
+
+func (r *RouteRegistry) reportEndpointsPerPool(uri route.Uri, endpoint *route.Endpoint) {
+	if endpoint.LoadBalancingAlgorithm == config.LOAD_BALANCE_HB {
+		pool := r.byURI.Find(uri.RouteKey())
+		r.reporter.CaptureEndpointsPerPool(pool.NumEndpoints(), string(uri), config.LOAD_BALANCE_HB)
+	}
 }
 
 func splitHostAndContextPath(uri route.Uri) (string, string) {
