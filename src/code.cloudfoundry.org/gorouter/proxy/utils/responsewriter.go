@@ -3,8 +3,11 @@ package utils
 import (
 	"bufio"
 	"errors"
+	"log/slog"
 	"net"
 	"net/http"
+
+	log "code.cloudfoundry.org/gorouter/logger"
 )
 
 type ProxyResponseWriter interface {
@@ -18,6 +21,7 @@ type ProxyResponseWriter interface {
 	SetStatus(status int)
 	Size() int
 	AddHeaderRewriter(HeaderRewriter)
+	WriteError() error
 }
 
 type proxyResponseWriter struct {
@@ -25,16 +29,20 @@ type proxyResponseWriter struct {
 	status int
 	size   int
 
+	logger  *slog.Logger
 	flusher http.Flusher
 	done    bool
+
+	writeErr error
 
 	headerRewriters []HeaderRewriter
 }
 
-func NewProxyResponseWriter(w http.ResponseWriter) *proxyResponseWriter {
+func NewProxyResponseWriter(w http.ResponseWriter, logger *slog.Logger) *proxyResponseWriter {
 	proxyWriter := &proxyResponseWriter{
 		w:       w,
 		flusher: w.(http.Flusher),
+		logger:  logger,
 	}
 
 	return proxyWriter
@@ -61,6 +69,17 @@ func (p *proxyResponseWriter) Write(b []byte) (int, error) {
 		p.WriteHeader(http.StatusOK)
 	}
 	size, err := p.w.Write(b)
+	if err != nil {
+		// Store the first write error for logging
+		if p.writeErr == nil {
+			p.writeErr = err
+		}
+		p.logger.Error("response-writing-err",
+			log.ErrAttr(err),
+			slog.Int("bytes_written", size),
+			slog.Int("total_size", p.size),
+			slog.Int("status", p.status))
+	}
 	p.size += size
 	return size, err
 }
@@ -117,4 +136,8 @@ func (p *proxyResponseWriter) Unwrap() http.ResponseWriter {
 
 func (p *proxyResponseWriter) AddHeaderRewriter(r HeaderRewriter) {
 	p.headerRewriters = append(p.headerRewriters, r)
+}
+
+func (p *proxyResponseWriter) WriteError() error {
+	return p.writeErr
 }

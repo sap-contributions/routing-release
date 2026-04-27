@@ -29,7 +29,7 @@ func (p *proxyWriterHandler) ServeHTTP(rw http.ResponseWriter, r *http.Request, 
 		log.Panic(p.logger, "request-info-err", log.ErrAttr(err))
 		return
 	}
-	proxyWriter := utils.NewProxyResponseWriter(rw)
+	proxyWriter := utils.NewProxyResponseWriter(rw, p.logger)
 	reqInfo.ProxyResponseWriter = proxyWriter
 	next(proxyWriter, r)
 }
