@@ -22,6 +22,7 @@ type ProxyResponseWriter interface {
 	Size() int
 	AddHeaderRewriter(HeaderRewriter)
 	WriteError() error
+	SetCancelOnError(cancel func())
 }
 
 type proxyResponseWriter struct {
@@ -33,7 +34,8 @@ type proxyResponseWriter struct {
 	flusher http.Flusher
 	done    bool
 
-	writeErr error
+	writeErr      error
+	cancelOnError func()
 
 	headerRewriters []HeaderRewriter
 }
@@ -73,6 +75,12 @@ func (p *proxyResponseWriter) Write(b []byte) (int, error) {
 		// Store the first write error for logging
 		if p.writeErr == nil {
 			p.writeErr = err
+
+			// Cancel the backend request context immediately to abort backend streaming
+			if p.cancelOnError != nil {
+				p.logger.Info("client-disconnect-detected-cancelling-backend-context", log.ErrAttr(err))
+				p.cancelOnError()
+			}
 		}
 		p.logger.Error("response-writing-err",
 			log.ErrAttr(err),
@@ -140,4 +148,8 @@ func (p *proxyResponseWriter) AddHeaderRewriter(r HeaderRewriter) {
 
 func (p *proxyResponseWriter) WriteError() error {
 	return p.writeErr
+}
+
+func (p *proxyResponseWriter) SetCancelOnError(cancel func()) {
+	p.cancelOnError = cancel
 }

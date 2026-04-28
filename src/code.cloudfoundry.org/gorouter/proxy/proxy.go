@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -237,8 +238,23 @@ func (p *proxy) ServeHTTP(responseWriter http.ResponseWriter, request *http.Requ
 		log.Panic(logger, "request-info-err", log.ErrAttr(errors.New("failed-to-access-RoutePool")))
 	}
 
+	// Create a cancellable context that will be cancelled when client disconnects
+	// This allows the backend request to abort quickly instead of blocking on res.Body.Close()
+	ctx, cancel := context.WithCancel(request.Context())
+	defer cancel()
+
+	// Connect the cancel function to the ProxyResponseWriter so it can cancel immediately
+	// when a write error (client disconnect) is detected
+	proxyWriter.SetCancelOnError(func() {
+		logger.Info("cancelling-backend-context-due-to-client-disconnect")
+		cancel()
+	})
+
+	// Use the cancellable context for the request
+	requestWithContext := request.WithContext(ctx)
+
 	reqInfo.AppRequestStartedAt = time.Now()
-	next(responseWriter, request)
+	next(responseWriter, requestWithContext)
 	reqInfo.AppRequestFinishedAt = time.Now()
 }
 
