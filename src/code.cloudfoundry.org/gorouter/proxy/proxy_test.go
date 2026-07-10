@@ -3047,6 +3047,33 @@ var _ = Describe("Proxy", func() {
 			config = nil // will be set in each test
 		})
 
+		It("allows connection when routeServiceConfig is nil", func() {
+			control := proxy.RouteServiceDialControl(nil)
+			err := control("tcp", "192.168.1.1:80", nil)
+			Expect(err).To(BeNil())
+		})
+
+		It("allows connection when blocklist is empty", func() {
+			blockList = []netip.Prefix{}
+			config = routeservice.NewRouteServiceConfig(
+				logger.Logger, true, false, nil, 1*time.Second, nil, nil, false, false, false, blockList,
+			)
+			control := proxy.RouteServiceDialControl(config)
+			err := control("tcp", "192.168.1.1:80", nil)
+			Expect(err).To(BeNil())
+		})
+
+		It("allows IPv4-mapped IPv6 address when normalized IPv4 is outside blocklist", func() {
+			blockList = []netip.Prefix{netip.MustParsePrefix("10.0.0.0/8")}
+			config = routeservice.NewRouteServiceConfig(
+				logger.Logger, true, false, nil, 1*time.Second, nil, nil, false, false, false, blockList,
+			)
+			control := proxy.RouteServiceDialControl(config)
+			// ::ffff:192.168.1.1 normalizes to 192.168.1.1, which is not in 10.0.0.0/8
+			err := control("tcp", "[::ffff:192.168.1.1]:80", nil)
+			Expect(err).To(BeNil())
+		})
+
 		It("does not match IPv4 address to IPv6 prefix", func() {
 			blockList = []netip.Prefix{netip.MustParsePrefix("::1/128")}
 			config = routeservice.NewRouteServiceConfig(
